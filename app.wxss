@@ -1,0 +1,209 @@
+/* 全局共用样式 */
+page {
+  background: #f5f6fa;
+  font-size: 28rpx;
+  color: #333;
+}
+
+/* 弹窗 */
+.mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.panel {
+  width: 660rpx;
+  max-height: 82vh;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 32rpx;
+  box-sizing: border-box;
+}
+.p-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  margin-bottom: 24rpx;
+  text-align: center;
+}
+.p-btns {
+  display: flex;
+  margin-top: 28rpx;
+}
+
+/* 表单 */
+.f-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20rpx;
+}
+.f-label {
+  width: 140rpx;
+  color: #666;
+  font-size: 28rpx;
+  flex-shrink: 0;
+}
+.f-input {
+  flex: 1;
+  background: #f5f6fa;
+  border-radius: 10rpx;
+  padding: 14rpx 20rpx;
+  font-size: 28rpx;
+}
+.f-input2 {
+  flex: 1;
+}
+.f-row3 {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+}
+.f-pick {
+  flex: 1;
+}
+.pick-val {
+  background: #f5f6fa;
+  border-radius: 10rpx;
+  padding: 14rpx 12rpx;
+  font-size: 26rpx;
+  text-align: center;
+  margin-right: 12rpx;
+  color: #333;
+}
+.f-to {
+  line-height: 76rpx;
+  padding: 0 8rpx;
+  color: #999;
+}
+
+/* 按钮 */
+.btn-primary {
+  flex: 1;
+  background: #2f6fed;
+  color: #fff;
+  border-radius: 12rpx;
+  padding: 18rpx 0;
+  text-align: center;
+  font-size: 30rpx;
+  margin-left: 16rpx;
+}
+.btn-ghost {
+  flex: 1;
+  background: #f0f2f5;
+  color: #555;
+  border-radius: 12rpx;
+  padding: 18rpx 0;
+  text-align: center;
+  font-size: 30rpx;
+}
+.btn-danger {
+  flex: 1;
+  background: #fff1f0;
+  color: #e64340;
+  border-radius: 12rpx;
+  padding: 18rpx 0;
+  text-align: center;
+  font-size: 30rpx;
+  margin-right: 16rpx;
+}
+
+/* 导入/分享 */
+.seg {
+  display: flex;
+  background: #f0f2f5;
+  border-radius: 12rpx;
+  padding: 6rpx;
+  margin-bottom: 20rpx;
+}
+.seg-item {
+  flex: 1;
+  text-align: center;
+  padding: 12rpx 0;
+  font-size: 26rpx;
+  color: #666;
+  border-radius: 8rpx;
+}
+.seg-on {
+  background: #fff;
+  color: #2f6fed;
+  font-weight: 600;
+}
+.imp-area {
+  width: 100%;
+  height: 200rpx;
+  background: #f5f6fa;
+  border-radius: 12rpx;
+  padding: 16rpx;
+  box-sizing: border-box;
+  font-size: 26rpx;
+}
+.share-area {
+  width: 100%;
+  height: 220rpx;
+  background: #f5f6fa;
+  border-radius: 12rpx;
+  padding: 16rpx;
+  box-sizing: border-box;
+  font-size: 24rpx;
+  word-break: break-all;
+}
+.help-link {
+  color: #2f6fed;
+  font-size: 24rpx;
+  margin-top: 12rpx;
+}
+.help-box {
+  background: #f8f9fb;
+  border-radius: 12rpx;
+  padding: 16rpx;
+  margin-top: 12rpx;
+}
+.help-line {
+  font-size: 22rpx;
+  color: #777;
+  line-height: 1.7;
+  display: block;
+  white-space: pre-line;
+}
+.mini-btn {
+  display: inline-block;
+  background: #2f6fed;
+  color: #fff;
+  font-size: 24rpx;
+  padding: 8rpx 24rpx;
+  border-radius: 20rpx;
+  margin-top: 12rpx;
+}
+
+/* 通用 */
+.toolbar {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  padding: 16rpx 24rpx;
+}
+.tb-btn {
+  color: #2f6fed;
+  font-size: 26rpx;
+  padding: 8rpx 24rpx;
+  background: rgba(47, 111, 237, 0.08);
+  border-radius: 24rpx;
+  margin-right: 16rpx;
+}
+.empty-tip {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 240rpx;
+  text-align: center;
+  color: #b0b6c0;
+  font-size: 26rpx;
+  pointer-events: none;
+}

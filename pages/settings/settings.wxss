@@ -1,0 +1,62 @@
+.page {
+  min-height: 100vh;
+  background: #f5f6fa;
+  padding: 24rpx 0 120rpx;
+}
+
+.group {
+  margin: 0 24rpx 24rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  overflow: hidden;
+}
+.g-title {
+  padding: 24rpx 28rpx 8rpx;
+  font-size: 26rpx;
+  color: #8a8f99;
+}
+.row {
+  display: flex;
+  align-items: center;
+  padding: 26rpx 28rpx;
+  border-bottom: 1rpx solid #f7f8fa;
+}
+.row:last-child {
+  border-bottom: none;
+}
+.r-label {
+  flex: 1;
+  font-size: 28rpx;
+}
+.r-val {
+  font-size: 28rpx;
+  color: #8a8f99;
+  margin-right: 12rpx;
+}
+.r-arrow {
+  color: #c3c8cf;
+  font-size: 32rpx;
+}
+.danger {
+  color: #e64340;
+}
+.hint {
+  padding: 16rpx 28rpx 24rpx;
+  font-size: 22rpx;
+  color: #b0b6c0;
+  line-height: 1.6;
+}
+.about {
+  padding: 8rpx 28rpx 28rpx;
+  font-size: 24rpx;
+  color: #8a8f99;
+  line-height: 1.8;
+  white-space: pre-line;
+}
+
+.share-hint {
+  font-size: 24rpx;
+  color: #888;
+  line-height: 1.6;
+  margin-bottom: 16rpx;
+}

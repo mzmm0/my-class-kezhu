@@ -1,0 +1,123 @@
+<view class="page">
+  <view class="stats-card">
+    <view class="st-main">
+      <text class="st-num">{{stats.gpa}}</text>
+      <text class="st-label">总 GPA（{{gpaName}}）</text>
+    </view>
+    <view class="st-row">
+      <view class="st-item">
+        <text class="st-v">{{stats.avg || '-'}}</text>
+        <text class="st-k">加权平均分</text>
+      </view>
+      <view class="st-item">
+        <text class="st-v">{{stats.creditSum}}</text>
+        <text class="st-k">总学分</text>
+      </view>
+      <view class="st-item">
+        <text class="st-v">{{stats.count}}</text>
+        <text class="st-k">课程数</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="toolbar">
+    <picker mode="selector" range="{{gpaNames}}" value="{{gpaIdx}}" bindchange="onGpaChange">
+      <view class="tb-btn">切换制式</view>
+    </picker>
+    <view class="tb-btn" bindtap="showImport">导入成绩</view>
+    <view class="tb-btn" bindtap="doShare">分享成绩</view>
+  </view>
+
+  <view class="term-list">
+    <view class="term" wx:for="{{terms}}" wx:key="name" wx:for-item="term">
+      <view class="term-head">
+        <text class="t-name">{{term.name}}</text>
+        <text class="t-gpa">GPA {{term.stats.gpa}} · 均分 {{term.stats.avg || '-'}}</text>
+      </view>
+      <view
+        class="g-row"
+        wx:for="{{term.list}}"
+        wx:for-item="g"
+        wx:key="id"
+        data-id="{{g.id}}"
+        bindtap="onRowTap"
+      >
+        <text class="g-name">{{g.name}}</text>
+        <text class="g-credit">{{g.credit}} 学分</text>
+        <text class="g-score">{{g.score}}</text>
+        <text class="g-gp">{{g.gp === null ? '-' : g.gp}}</text>
+      </view>
+    </view>
+    <view class="empty-tip" wx:if="{{!terms.length}}">还没有成绩，点右下角 + 添加</view>
+  </view>
+
+  <view class="fab" bindtap="onAdd">+</view>
+
+  <!-- 成绩编辑弹窗 -->
+  <view class="mask" wx:if="{{editor}}" bindtap="closeEditor">
+    <view class="panel" catchtap="noop">
+      <view class="p-title">{{editForm.id ? '编辑成绩' : '添加成绩'}}</view>
+      <view class="f-row">
+        <text class="f-label">学期</text>
+        <input class="f-input" value="{{editForm.term}}" data-k="term" bindinput="onField" placeholder="如：2025-2026-1，选填" />
+      </view>
+      <view class="f-row">
+        <text class="f-label">课程名</text>
+        <input class="f-input" value="{{editForm.name}}" data-k="name" bindinput="onField" placeholder="如：高等数学" />
+      </view>
+      <view class="f-row">
+        <text class="f-label">学分</text>
+        <input class="f-input" type="digit" value="{{editForm.credit}}" data-k="credit" bindinput="onField" placeholder="如：4" />
+      </view>
+      <view class="f-row">
+        <text class="f-label">成绩</text>
+        <input class="f-input" value="{{editForm.score}}" data-k="score" bindinput="onField" placeholder="分数或 优/良/中/及格" />
+      </view>
+      <view class="p-btns">
+        <view class="btn-danger" wx:if="{{editForm.id}}" bindtap="onDelete">删除</view>
+        <view class="btn-ghost" bindtap="closeEditor">取消</view>
+        <view class="btn-primary" bindtap="onSave">保存</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 导入弹窗 -->
+  <view class="mask" wx:if="{{importShow}}" bindtap="closeImport">
+    <view class="panel" catchtap="noop">
+      <view class="p-title">导入成绩</view>
+      <view class="seg">
+        <view class="seg-item {{importTab === 0 ? 'seg-on' : ''}}" data-t="0" bindtap="setImportTab">粘贴文本</view>
+        <view class="seg-item {{importTab === 1 ? 'seg-on' : ''}}" data-t="1" bindtap="setImportTab">分享码</view>
+      </view>
+      <textarea
+        class="imp-area"
+        value="{{importText}}"
+        bindinput="onImportText"
+        maxlength="-1"
+        placeholder="{{importTab === 0 ? '每行：课程名 学分 成绩 学期(选填)，Tab 或空格分隔；也可直接粘贴教务系统成绩表' : '粘贴好友发给你的成绩分享码'}}"
+      ></textarea>
+      <view class="help-box" wx:if="{{importTab === 0}}">
+        <text class="help-line">每行一门课：课程名 TAB 学分 TAB 成绩 TAB 学期
+例：高等数学 4 92 2025-2026-1
+支持直接粘贴教务系统导出的成绩表格（自动识别“课程/学分/成绩”表头列）</text>
+      </view>
+      <view class="p-btns">
+        <view class="btn-ghost" bindtap="closeImport">取消</view>
+        <view class="btn-primary" bindtap="doImport">解析并导入</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 分享弹窗 -->
+  <view class="mask" wx:if="{{shareShow}}" bindtap="closeShare">
+    <view class="panel" catchtap="noop">
+      <view class="p-title">成绩分享码</view>
+      <view class="share-hint">发给同学后，在「导入成绩 → 分享码」里粘贴即可导入（不包含设置信息）。</view>
+      <textarea class="share-area" value="{{shareCode}}" maxlength="-1" disabled="{{true}}"></textarea>
+      <view class="p-btns">
+        <view class="btn-ghost" bindtap="closeShare">关闭</view>
+        <view class="btn-primary" bindtap="copyCode">复制分享码</view>
+      </view>
+    </view>
+  </view>
+</view>

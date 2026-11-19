@@ -1,0 +1,175 @@
+<view class="page">
+  <view class="toolbar">
+    <view class="week-nav">
+      <view class="wn-btn" bindtap="prevWeek">‹</view>
+      <view class="wn-label" bindtap="backNow">第 {{week}} 周</view>
+      <view class="wn-btn" bindtap="nextWeek">›</view>
+    </view>
+    <view class="tb-actions">
+      <view class="tb-btn" bindtap="showImport">导入</view>
+      <view class="tb-btn" bindtap="doShare">分享</view>
+    </view>
+  </view>
+
+  <view class="today-card {{todayBar.mode}}" wx:if="{{todayBar}}">
+    <view class="td-dot"></view>
+    <view class="td-main">
+      <view class="td-title">{{todayBar.title}}</view>
+      <view class="td-sub">{{todayBar.sub}}</view>
+    </view>
+  </view>
+
+  <view class="grid-head">
+    <view class="gh-corner"></view>
+    <view
+      class="gh-day {{todayIdx === index + 1 ? 'gh-today' : ''}}"
+      wx:for="{{days}}"
+      wx:key="*this"
+      wx:for-index="index"
+    >
+      <text>{{item}}</text>
+    </view>
+  </view>
+
+  <scroll-view class="grid-scroll" scroll-y show-scrollbar="{{false}}">
+    <view class="grid-body" style="height: {{gridHeight}}rpx;">
+      <view
+        class="time-cell {{item.major ? 'time-major' : ''}} {{item.last ? 'time-last' : ''}}"
+        wx:for="{{timeCol}}"
+        wx:key="key"
+        style="top: {{index * 112}}rpx;"
+      >
+        <text class="tc-no">{{item.no}}</text>
+        <text class="tc-time">{{item.time}}</text>
+      </view>
+      <view
+        class="cell {{item.major ? 'cell-major' : ''}} {{item.last ? 'cell-last' : ''}}"
+        wx:for="{{cells}}"
+        wx:key="key"
+        style="left: {{item.left}}rpx; top: {{item.top}}rpx;"
+        data-day="{{item.day}}"
+        data-period="{{item.period}}"
+        bindtap="onCellTap"
+      ></view>
+      <view
+        class="course-block"
+        wx:for="{{blocks}}"
+        wx:key="id"
+        style="{{item.style}}"
+        data-id="{{item.id}}"
+        bindtap="onBlockTap"
+      >
+        <view class="cb-name">{{item.name}}</view>
+        <view class="cb-sub" wx:if="{{item.room}}">@{{item.room}}</view>
+        <view class="cb-sub" wx:if="{{item.teacher}}">{{item.teacher}}</view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view class="empty-tip" wx:if="{{!hasCourse}}">点击任意格子，添加你的第一节课</view>
+
+  <!-- 课程编辑弹窗 -->
+  <view class="mask" wx:if="{{editor}}" bindtap="closeEditor">
+    <view class="panel" catchtap="noop">
+      <view class="p-title">{{editForm.id ? '编辑课程' : '添加课程'}}</view>
+      <view class="f-row">
+        <text class="f-label">课程名</text>
+        <input class="f-input" value="{{editForm.name}}" data-k="name" bindinput="onField" placeholder="如：高等数学" />
+      </view>
+      <view class="f-row">
+        <text class="f-label">老师</text>
+        <input class="f-input" value="{{editForm.teacher}}" data-k="teacher" bindinput="onField" placeholder="选填" />
+      </view>
+      <view class="f-row">
+        <text class="f-label">教室</text>
+        <input class="f-input" value="{{editForm.room}}" data-k="room" bindinput="onField" placeholder="选填" />
+      </view>
+      <view class="f-row3">
+        <picker class="f-pick" mode="selector" range="{{dayOptions}}" value="{{editForm.dayIdx}}" data-k="dayIdx" bindchange="onField">
+          <view class="pick-val">{{dayOptions[editForm.dayIdx]}}</view>
+        </picker>
+        <picker class="f-pick" mode="selector" range="{{startOptions}}" value="{{editForm.startIdx}}" data-k="startIdx" bindchange="onField">
+          <view class="pick-val">第 {{editForm.startIdx + 1}} 节起</view>
+        </picker>
+        <picker class="f-pick" mode="selector" range="{{lenOptions}}" value="{{editForm.lenIdx}}" data-k="lenIdx" bindchange="onField">
+          <view class="pick-val">上 {{editForm.lenIdx + 1}} 节</view>
+        </picker>
+      </view>
+      <view class="f-row">
+        <text class="f-label">周次范围</text>
+        <picker class="f-input2" mode="selector" range="{{rangeModes}}" value="{{editForm.rangeIdx}}" data-k="rangeIdx" bindchange="onField">
+          <view class="pick-val">{{rangeModes[editForm.rangeIdx]}}</view>
+        </picker>
+      </view>
+      <view class="f-row" wx:if="{{editForm.rangeIdx === 1}}">
+        <text class="f-label">区间</text>
+        <view class="f-row3" style="flex: 1;">
+          <picker class="f-pick" mode="selector" range="{{weekRange}}" value="{{editForm.fromIdx}}" data-k="fromIdx" bindchange="onField">
+            <view class="pick-val">第 {{editForm.fromIdx + 1}} 周</view>
+          </picker>
+          <text class="f-to">至</text>
+          <picker class="f-pick" mode="selector" range="{{weekRange}}" value="{{editForm.toIdx}}" data-k="toIdx" bindchange="onField">
+            <view class="pick-val">第 {{editForm.toIdx + 1}} 周</view>
+          </picker>
+        </view>
+      </view>
+      <view class="f-row">
+        <text class="f-label">单双周</text>
+        <picker class="f-input2" mode="selector" range="{{parityModes}}" value="{{editForm.parityIdx}}" data-k="parityIdx" bindchange="onField">
+          <view class="pick-val">{{parityModes[editForm.parityIdx]}}</view>
+        </picker>
+      </view>
+      <view class="p-btns">
+        <view class="btn-danger" wx:if="{{editForm.id}}" bindtap="onDelete">删除</view>
+        <view class="btn-ghost" bindtap="closeEditor">取消</view>
+        <view class="btn-primary" bindtap="onSave">保存</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 导入弹窗 -->
+  <view class="mask" wx:if="{{importShow}}" bindtap="closeImport">
+    <view class="panel" catchtap="noop">
+      <view class="p-title">导入课表</view>
+      <view class="seg">
+        <view class="seg-item {{importTab === 0 ? 'seg-on' : ''}}" data-t="0" bindtap="setImportTab">粘贴文本</view>
+        <view class="seg-item {{importTab === 1 ? 'seg-on' : ''}}" data-t="1" bindtap="setImportTab">分享码</view>
+      </view>
+      <textarea
+        class="imp-area"
+        value="{{importText}}"
+        bindinput="onImportText"
+        maxlength="-1"
+        placeholder="{{importTab === 0 ? '在电脑上打开课表 Excel，全选复制后粘贴到这里' : '粘贴好友发给你的课表分享码'}}"
+      ></textarea>
+      <view class="help-link" wx:if="{{importTab === 0}}" bindtap="toggleHelp">{{helpShow ? '收起格式说明' : '查看格式说明 / 复制模板'}}</view>
+      <view class="help-box" wx:if="{{helpShow && importTab === 0}}">
+        <text class="help-line">方式一：每行一门课，用 Tab 或逗号分隔：
+课程名 星期 开始节次 节长 周次 教室 老师
+例：高等数学 周一 1 2 1-16周 教A-101 张三
+周次可写 1-16周、单周、双周、1-16周(双)，留空则默认全部周
+
+方式二：直接粘贴教务系统导出的课表表格
+（能自动识别含“周一~周日”表头的网格）</text>
+        <view class="mini-btn" bindtap="copyTemplate">复制模板</view>
+      </view>
+      <view class="p-btns">
+        <view class="btn-ghost" bindtap="closeImport">取消</view>
+        <view class="btn-primary" bindtap="doImport">解析并导入</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 分享弹窗 -->
+  <view class="mask" wx:if="{{shareShow}}" bindtap="closeShare">
+    <view class="panel" catchtap="noop">
+      <view class="p-title">课表分享码</view>
+      <view class="share-hint">把下面的码发给同学（微信/QQ 均可），TA 在「导入 → 分享码」里粘贴即可一键导入整张课表。</view>
+      <textarea class="share-area" value="{{shareCode}}" maxlength="-1" disabled="{{true}}"></textarea>
+      <view class="p-btns">
+        <view class="btn-ghost" bindtap="closeShare">关闭</view>
+        <view class="btn-primary" bindtap="copyCode">复制分享码</view>
+      </view>
+    </view>
+  </view>
+</view>

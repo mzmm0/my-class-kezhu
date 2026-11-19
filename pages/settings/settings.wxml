@@ -1,0 +1,106 @@
+<view class="page">
+  <view class="group">
+    <view class="g-title">学期与课表</view>
+    <picker mode="date" value="{{dateValue}}" bindchange="onDate">
+      <view class="row">
+        <text class="r-label">学期开始日期（第一周周一）</text>
+        <text class="r-val">{{s.semesterStart}}</text>
+        <text class="r-arrow">›</text>
+      </view>
+    </picker>
+    <picker mode="selector" range="{{weeksOptions}}" bindchange="onWeeks">
+      <view class="row">
+        <text class="r-label">学期总周数</text>
+        <text class="r-val">{{s.totalWeeks}} 周</text>
+        <text class="r-arrow">›</text>
+      </view>
+    </picker>
+    <picker mode="selector" range="{{periodsOptions}}" bindchange="onPeriods">
+      <view class="row">
+        <text class="r-label">每天节次数</text>
+        <text class="r-val">{{s.periodCount}} 节</text>
+        <text class="r-arrow">›</text>
+      </view>
+    </picker>
+  </view>
+
+  <view class="group">
+    <view class="g-title">上课时间（每个小节的开始时刻）</view>
+    <picker wx:for="{{timeRows}}" wx:key="key" mode="time" value="{{item.time}}" data-idx="{{index}}" bindchange="onPeriodTime">
+      <view class="row">
+        <text class="r-label">第 {{item.no}} 节</text>
+        <text class="r-val">{{item.time}}</text>
+        <text class="r-arrow">›</text>
+      </view>
+    </picker>
+    <view class="row" bindtap="resetTimes">
+      <text class="r-label">恢复默认作息</text>
+      <text class="r-arrow">›</text>
+    </view>
+    <view class="hint">默认按“1 大节＝2 小节、每小节 45 分钟”：上午 8:00 / 10:05，下午 14:00 / 16:05，晚 19:00 / 20:05。各校作息不同，点上面的时间即可修改。</view>
+  </view>
+
+  <view class="group">
+    <view class="g-title">绩点</view>
+    <picker mode="selector" range="{{gpaNames}}" bindchange="onGpa">
+      <view class="row">
+        <text class="r-label">绩点制式</text>
+        <text class="r-val">{{gpaNames[gpaIdx]}}</text>
+        <text class="r-arrow">›</text>
+      </view>
+    </picker>
+    <view class="hint">等级成绩折算：优 95 / 良 85 / 中 75 / 及格 65 / 不及格 40，折算后按所选制式计算。长大方案：绩点＝成绩 ÷ 10 − 5，不足 0 按 0 计。</view>
+  </view>
+
+  <view class="group">
+    <view class="g-title">数据备份</view>
+    <view class="row" bindtap="exportAll">
+      <text class="r-label">导出全部数据（生成备份码）</text>
+      <text class="r-arrow">›</text>
+    </view>
+    <view class="row" bindtap="showImport">
+      <text class="r-label">从备份码恢复</text>
+      <text class="r-arrow">›</text>
+    </view>
+    <view class="row" bindtap="clearCourses">
+      <text class="r-label danger">清空课表数据</text>
+      <text class="r-arrow">›</text>
+    </view>
+    <view class="row" bindtap="clearGrades">
+      <text class="r-label danger">清空成绩数据</text>
+      <text class="r-arrow">›</text>
+    </view>
+  </view>
+
+  <view class="group">
+    <view class="g-title">关于</view>
+    <view class="about">My Class课助 v1.0
+数据仅保存在你的手机本机，不上传、不收集任何个人信息。
+换手机前，请先在「数据备份」导出备份码，在新手机上恢复。</view>
+  </view>
+
+  <!-- 备份码展示 -->
+  <view class="mask" wx:if="{{shareShow}}" bindtap="closeShare">
+    <view class="panel" catchtap="noop">
+      <view class="p-title">备份码</view>
+      <view class="share-hint">包含课表、成绩和设置。复制保存到微信收藏/备忘录，换手机时粘贴恢复。</view>
+      <textarea class="share-area" value="{{shareCode}}" maxlength="-1" disabled="{{true}}"></textarea>
+      <view class="p-btns">
+        <view class="btn-ghost" bindtap="closeShare">关闭</view>
+        <view class="btn-primary" bindtap="copyCode">复制备份码</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 备份恢复 -->
+  <view class="mask" wx:if="{{importShow}}" bindtap="closeImport">
+    <view class="panel" catchtap="noop">
+      <view class="p-title">恢复备份</view>
+      <textarea class="imp-area" value="{{importText}}" bindinput="onImportText" maxlength="-1" placeholder="粘贴之前导出的备份码"></textarea>
+      <view class="p-btns">
+        <view class="btn-ghost" bindtap="closeImport">取消</view>
+        <view class="btn-primary" bindtap="doImport">恢复数据</view>
+      </view>
+    </view>
+  </view>
+</view>

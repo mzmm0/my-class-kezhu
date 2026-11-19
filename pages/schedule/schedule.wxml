@@ -6,6 +6,7 @@
       <view class="wn-btn" bindtap="nextWeek">›</view>
     </view>
     <view class="tb-actions">
+      <view class="tb-btn" bindtap="exportImage">导出图</view>
       <view class="tb-btn" bindtap="showImport">导入</view>
       <view class="tb-btn" bindtap="doShare">分享</view>
     </view>
@@ -52,7 +53,7 @@
         bindtap="onCellTap"
       ></view>
       <view
-        class="course-block"
+        class="course-block {{item.dim ? 'cb-dim' : ''}}"
         wx:for="{{blocks}}"
         wx:key="id"
         style="{{item.style}}"
@@ -60,8 +61,9 @@
         bindtap="onBlockTap"
       >
         <view class="cb-name">{{item.name}}</view>
-        <view class="cb-sub" wx:if="{{item.room}}">@{{item.room}}</view>
-        <view class="cb-sub" wx:if="{{item.teacher}}">{{item.teacher}}</view>
+        <view class="cb-sub" wx:if="{{!item.dim && item.room}}">@{{item.room}}</view>
+        <view class="cb-sub" wx:if="{{!item.dim && item.teacher}}">{{item.teacher}}</view>
+        <view class="cb-tag" wx:if="{{item.dim}}">{{item.tag}}</view>
       </view>
     </view>
   </scroll-view>
@@ -172,4 +174,11 @@
       </view>
     </view>
   </view>
+
+  <!-- 导出图片用的离屏画布 -->
+  <canvas
+    canvas-id="exportCanvas"
+    class="export-canvas"
+    style="width: {{exportW}}px; height: {{exportH}}px;"
+  ></canvas>
 </view>

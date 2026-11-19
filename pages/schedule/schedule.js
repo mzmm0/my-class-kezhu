@@ -9,6 +9,10 @@ var TIME_W = 90;
 var DAY_W = 94;
 var CELL_H = 112;
 
+// 导出图片：画布按 1.5 倍像素绘制，保证发出去不糊
+var EXPORT_SCALE = 1.5;
+var EXPORT_CELL_H = 96; // 导出图里每节课的高度（rpx）
+
 var PALETTE = [
   '#4c84f0', '#3fbf7f', '#f0a13c', '#e8624a', '#8b6de0',
   '#38b8c4', '#e0779d', '#7cae44', '#c98a3e', '#5a9bd8'
@@ -22,6 +26,61 @@ function colorFor(name) {
     h = (h * 31 + s.charCodeAt(i)) >>> 0;
   }
   return PALETTE[h % PALETTE.length];
+}
+
+// 非本周课程的角标文案：已结课 / 还没开始 / 单双周
+function blockTag(weeks, week, totalWeeks) {
+  var w = weeks || {};
+  var from = w.rangeFrom || 1;
+  var to = w.rangeTo || (totalWeeks || 20);
+  if (week > to) return '已结课';
+  if (week < from) return '第' + from + '周起';
+  if (w.mode === 'odd') return '单周';
+  if (w.mode === 'even') return '双周';
+  return '非本周';
+}
+
+// canvas 圆角矩形路径
+function roundRect(ctx, x, y, w, h, r) {
+  var rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y);
+  ctx.arc(x + w - rr, y + rr, rr, -Math.PI / 2, 0);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.arc(x + w - rr, y + h - rr, rr, 0, Math.PI / 2);
+  ctx.lineTo(x + rr, y + h);
+  ctx.arc(x + rr, y + h - rr, rr, Math.PI / 2, Math.PI);
+  ctx.lineTo(x, y + rr);
+  ctx.arc(x + rr, y + rr, rr, Math.PI, Math.PI * 1.5);
+  ctx.closePath();
+}
+
+// 按宽度折行，超出 maxLines 用省略号收尾
+function wrapLines(ctx, text, maxWidth, maxLines) {
+  var s = String(text == null ? '' : text);
+  var lines = [];
+  var cur = '';
+  for (var i = 0; i < s.length; i++) {
+    var ch = s.charAt(i);
+    if (ctx.measureText(cur + ch).width > maxWidth && cur) {
+      lines.push(cur);
+      cur = ch;
+      if (lines.length >= maxLines) break;
+    } else {
+      cur += ch;
+    }
+  }
+  var truncated = lines.length >= maxLines && lines.join('').length < s.length;
+  if (lines.length < maxLines && cur) lines.push(cur);
+  if (truncated && lines.length) {
+    var last = lines[lines.length - 1];
+    while (last.length > 1 && ctx.measureText(last + '…').width > maxWidth) {
+      last = last.slice(0, -1);
+    }
+    lines[lines.length - 1] = last + '…';
+  }
+  return lines;
 }
 
 Page({
@@ -52,7 +111,10 @@ Page({
     importText: '',
     helpShow: false,
     shareShow: false,
-    shareCode: ''
+    shareCode: '',
+    // 导出图片用的离屏画布尺寸（px）
+    exportW: 375,
+    exportH: 800
   },
 
   onLoad: function () {
@@ -67,6 +129,30 @@ Page({
   onShow: function () {
     this.refresh();
     this.startTodayTimer();
+    this.checkLoss();
+  },
+
+  // ---------- 数据丢失检测 ----------
+  // 场景：误点清空 / 清缓存 / 版本更新异常导致课表成绩全空，但历史快照还在
+  checkLoss: function () {
+    var loss = store.detectLoss();
+    if (!loss) return;
+    var that = this;
+    var d = new Date(loss.latest.t);
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    var timeText = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    wx.showModal({
+      title: '发现历史备份',
+      content: '当前课表为空，但存在 ' + timeText + ' 的自动备份（' + ((loss.latest.c && loss.latest.c.length) || 0) + ' 门课程）。要恢复吗？',
+      confirmText: '恢复',
+      cancelText: '暂不',
+      success: function (r) {
+        if (!r.confirm) return;
+        store.restoreSnapshot(0);
+        that.refresh();
+        wx.showToast({ title: '已恢复', icon: 'success' });
+      }
+    });
   },
 
   onHide: function () { this.stopTodayTimer(); },
@@ -203,28 +289,266 @@ Page({
       }
     }
     var blocks = [];
+    var dimBlocks = [];
     courses.forEach(function (c) {
-      if (!parseUtil.weekVisible(c.weeks, week, settings.totalWeeks)) return;
       if (!c.day || !c.startPeriod || c.day < 1 || c.day > 7) return;
       if (c.startPeriod > pc) return;
+      var visible = parseUtil.weekVisible(c.weeks, week, settings.totalWeeks);
       var periods = Math.min(c.periods || 1, pc - c.startPeriod + 1);
-      blocks.push({
+      var geo = 'left:' + (TIME_W + (c.day - 1) * DAY_W + 3) + 'rpx;' +
+                'top:' + ((c.startPeriod - 1) * CELL_H + 3) + 'rpx;' +
+                'width:' + (DAY_W - 6) + 'rpx;' +
+                'height:' + (periods * CELL_H - 6) + 'rpx;';
+      var block = {
         id: c.id,
-        style: 'left:' + (TIME_W + (c.day - 1) * DAY_W + 3) + 'rpx;' +
-               'top:' + ((c.startPeriod - 1) * CELL_H + 3) + 'rpx;' +
-               'width:' + (DAY_W - 6) + 'rpx;' +
-               'height:' + (periods * CELL_H - 6) + 'rpx;' +
-               'background:' + colorFor(c.name) + ';',
+        style: geo + 'background:' + colorFor(c.name) + ';',
         name: c.name,
         room: c.room || '',
-        teacher: c.teacher || ''
-      });
+        teacher: c.teacher || '',
+        dim: false,
+        tag: ''
+      };
+      if (!visible) {
+        // 非本周的课保留位置但置灰，避免"课突然消失"
+        block.style = geo;
+        block.dim = true;
+        block.tag = blockTag(c.weeks, week, settings.totalWeeks);
+        dimBlocks.push(block);
+      } else {
+        blocks.push(block);
+      }
     });
+    // 置灰的排在前面，本周的压在上面
+    blocks = dimBlocks.concat(blocks);
     return { timeCol: timeCol, cells: cells, blocks: blocks, gridHeight: gridHeight };
   },
 
   periodTime: function (settings, p) {
     return (settings.periodTimes && settings.periodTimes[p - 1]) || presets.PERIOD_TIMES[p - 1] || '';
+  },
+
+  // ---------- 导出课表图片 ----------
+  exportImage: function () {
+    var courses = store.loadCourses();
+    if (!courses.length) {
+      wx.showToast({ title: '还没有课程', icon: 'none' });
+      return;
+    }
+    var s = store.loadSettings();
+    var pc = s.periodCount || 12;
+    var rpxH = 156 + pc * EXPORT_CELL_H + 60;
+    var that = this;
+    wx.showLoading({ title: '生成中', mask: true });
+    this.setData({
+      exportW: Math.round(750 * EXPORT_SCALE),
+      exportH: Math.round(rpxH * EXPORT_SCALE)
+    }, function () {
+      // 等画布完成布局后再绘制
+      setTimeout(function () { that.paintExport(); }, 100);
+    });
+  },
+
+  paintExport: function () {
+    var that = this;
+    var s = store.loadSettings();
+    var pc = s.periodCount || 12;
+    var week = this.data.week;
+    var courses = store.loadCourses();
+    var K = EXPORT_SCALE;
+    var W = 750 * K;
+    var HW = 100 * K;              // 顶栏高度
+    var DH = 56 * K;               // 星期栏高度
+    var CH = EXPORT_CELL_H * K;    // 每节课高度
+    var TW = 120 * K;              // 时间列宽
+    var DW = 90 * K;               // 每天列宽
+    var y0 = HW + DH;
+    var H = y0 + pc * CH + 60 * K;
+    var ctx = wx.createCanvasContext('exportCanvas', this);
+
+    ctx.setFillStyle('#ffffff');
+    ctx.fillRect(0, 0, W, H);
+
+    // 顶栏 + 星期栏通铺品牌蓝
+    ctx.setFillStyle('#2f6fed');
+    ctx.fillRect(0, 0, W, y0);
+    ctx.setTextBaseline('middle');
+    ctx.setTextAlign('left');
+    ctx.setFillStyle('#ffffff');
+    ctx.setFontSize(34 * K);
+    ctx.fillText('第 ' + week + ' 周课表', 28 * K, HW / 2);
+    ctx.setTextAlign('right');
+    ctx.setGlobalAlpha(0.85);
+    ctx.setFontSize(20 * K);
+    ctx.fillText('My Class课助', W - 28 * K, HW / 2);
+    ctx.setGlobalAlpha(1);
+
+    // 星期 + 日期
+    var start = dateUtil.parseDate(s.semesterStart);
+    var monday = start ? new Date(start.getTime() + (week - 1) * 604800000) : null;
+    var days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    ctx.setTextAlign('center');
+    for (var d = 0; d < 7; d++) {
+      var cx = TW + DW * d + DW / 2;
+      ctx.setFillStyle('#ffffff');
+      ctx.setFontSize(22 * K);
+      ctx.fillText(days[d], cx, HW + 18 * K);
+      if (monday) {
+        var dt = new Date(monday.getTime() + d * 86400000);
+        ctx.setFillStyle('rgba(255,255,255,0.72)');
+        ctx.setFontSize(15 * K);
+        ctx.fillText((dt.getMonth() + 1) + '/' + dt.getDate(), cx, HW + 41 * K);
+      }
+    }
+
+    // 隔行底色
+    ctx.setFillStyle('#fafbfd');
+    for (var p = 1; p < pc; p += 2) {
+      ctx.fillRect(TW, y0 + p * CH, W - TW, CH);
+    }
+
+    // 横线：每两节一条粗线
+    for (var r = 0; r <= pc; r++) {
+      var ly = y0 + r * CH;
+      var major = r % 2 === 0;
+      ctx.setStrokeStyle(major ? '#c7ccd6' : '#e8eaf0');
+      ctx.setLineWidth(major ? 2 : 1);
+      ctx.beginPath();
+      ctx.moveTo(0, ly);
+      ctx.lineTo(W, ly);
+      ctx.stroke();
+    }
+    // 竖线
+    ctx.setStrokeStyle('#e8eaf0');
+    ctx.setLineWidth(1);
+    for (var v = 0; v <= 7; v++) {
+      var lx = TW + v * DW;
+      ctx.beginPath();
+      ctx.moveTo(lx, y0);
+      ctx.lineTo(lx, y0 + pc * CH);
+      ctx.stroke();
+    }
+
+    // 时间列
+    for (var q = 1; q <= pc; q++) {
+      var cy = y0 + (q - 1) * CH + CH / 2;
+      ctx.setTextAlign('center');
+      ctx.setFillStyle('#6b7280');
+      ctx.setFontSize(19 * K);
+      ctx.fillText('第' + q + '节', TW / 2, cy - 9 * K);
+      var t = (s.periodTimes && s.periodTimes[q - 1]) || presets.PERIOD_TIMES[q - 1] || '';
+      if (t) {
+        ctx.setFillStyle('#a7adb8');
+        ctx.setFontSize(15 * K);
+        ctx.fillText(t, TW / 2, cy + 12 * K);
+      }
+    }
+
+    // 课程块（只画本周要上的课，和时间轴一致）
+    courses.forEach(function (c) {
+      if (!parseUtil.weekVisible(c.weeks, week, s.totalWeeks)) return;
+      if (!c.day || c.day < 1 || c.day > 7) return;
+      if (!c.startPeriod || c.startPeriod > pc) return;
+      var periods = Math.min(c.periods || 1, pc - c.startPeriod + 1);
+      var bx = TW + (c.day - 1) * DW + 3 * K;
+      var by = y0 + (c.startPeriod - 1) * CH + 3 * K;
+      var bw = DW - 6 * K;
+      var bh = periods * CH - 6 * K;
+      var pad = 8 * K;
+      var innerW = bw - pad * 2;
+      var lh = 24 * K;      // 课程名行高
+      var slh = 21 * K;     // 教室/老师行高
+
+      ctx.setFillStyle(colorFor(c.name));
+      roundRect(ctx, bx, by, bw, bh, 8 * K);
+      ctx.fill();
+
+      // 按块高决定能塞几行课程名（1 节的短块也能放下 3 行）
+      var avail = bh - pad * 2;
+      var maxName = Math.max(1, Math.min(3, Math.floor(avail / lh)));
+      // 关键：先设好字号再量文字宽度，否则折行会算错
+      ctx.setFontSize(19 * K);
+      var lines = wrapLines(ctx, c.name, innerW, maxName);
+      var nameH = lines.length * lh;
+
+      // 剩下的空间才放教室、老师
+      var subs = [];
+      if (c.room) subs.push(c.room);
+      if (c.teacher) subs.push(c.teacher);
+      var maxSubs = Math.max(0, Math.floor((avail - nameH) / slh));
+      subs = subs.slice(0, maxSubs);
+      var totalH = nameH + subs.length * slh;
+
+      // 空间富余时整体垂直居中，避免大字块顶部堆字、下面一大片空白
+      var ty = by + pad;
+      if (bh - totalH > pad * 3) ty = by + (bh - totalH) / 2;
+
+      ctx.setTextAlign('left');
+      ctx.setTextBaseline('top');
+      ctx.setFillStyle('#ffffff');
+      ctx.setFontSize(19 * K);
+      for (var i = 0; i < lines.length; i++) {
+        ctx.fillText(lines[i], bx + pad, ty);
+        ty += lh;
+      }
+
+      ctx.setGlobalAlpha(0.9);
+      ctx.setFontSize(16 * K);
+      for (var j = 0; j < subs.length; j++) {
+        ctx.fillText(wrapLines(ctx, subs[j], innerW, 1)[0] || '', bx + pad, ty + 1 * K);
+        ty += slh;
+      }
+      ctx.setGlobalAlpha(1);
+    });
+
+    // 底部说明
+    ctx.setTextAlign('center');
+    ctx.setTextBaseline('middle');
+    ctx.setFillStyle('#9aa2ae');
+    ctx.setFontSize(18 * K);
+    ctx.fillText('数据仅存本机 · ' + (s.semesterStart || '') + ' 起 · 共 ' + s.totalWeeks + ' 周',
+      W / 2, y0 + pc * CH + 30 * K);
+
+    ctx.draw(false, function () {
+      wx.canvasToTempFilePath({
+        canvasId: 'exportCanvas',
+        x: 0,
+        y: 0,
+        width: W,
+        height: H,
+        destWidth: W,
+        destHeight: H,
+        success: function (res) {
+          wx.hideLoading();
+          that.saveOrPreview(res.tempFilePath);
+        },
+        fail: function () {
+          wx.hideLoading();
+          wx.showToast({ title: '生成失败，请重试', icon: 'none' });
+        }
+      }, that);
+    });
+  },
+
+  saveOrPreview: function (path) {
+    wx.saveImageToPhotosAlbum({
+      filePath: path,
+      success: function () {
+        wx.showToast({ title: '已保存到相册', icon: 'success' });
+      },
+      fail: function (err) {
+        var msg = (err && err.errMsg) || '';
+        if (msg.indexOf('auth') > -1 || msg.indexOf('deny') > -1) {
+          wx.showModal({
+            title: '需要相册权限',
+            content: '保存课表图片需要「保存到相册」权限，去设置里打开吗？',
+            success: function (r) { if (r.confirm) wx.openSetting(); }
+          });
+        } else {
+          // 其它失败（如开发者工具里不支持）直接预览，可长按保存
+          wx.previewImage({ urls: [path] });
+        }
+      }
+    });
   },
 
   // ---------- 周次切换 ----------

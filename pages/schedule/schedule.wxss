@@ -38,7 +38,9 @@
   color: #fff;
   background: rgba(255, 255, 255, 0.18);
   margin-right: 0;
-  margin-left: 16rpx;
+  margin-left: 12rpx;
+  padding: 8rpx 16rpx;
+  font-size: 24rpx;
 }
 
 .today-card {
@@ -183,4 +185,32 @@
   color: #888;
   line-height: 1.6;
   margin-bottom: 16rpx;
+}
+
+/* 非本周课程：置灰但保留位置 */
+.course-block.cb-dim {
+  background: #eef0f4;
+  color: #a3a9b4;
+  border: 1rpx dashed #cdd2db;
+}
+.cb-dim .cb-name {
+  font-weight: 500;
+}
+.cb-tag {
+  display: inline-block;
+  margin-top: 6rpx;
+  padding: 0 8rpx;
+  font-size: 16rpx;
+  line-height: 1.8;
+  color: #9aa0aa;
+  background: #e1e5eb;
+  border-radius: 6rpx;
+}
+
+/* 导出的离屏画布：移出可视区，不影响布局 */
+.export-canvas {
+  position: fixed;
+  left: -2000px;
+  top: 0;
+  z-index: -1;
 }

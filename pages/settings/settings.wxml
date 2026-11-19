@@ -53,6 +53,23 @@
   </view>
 
   <view class="group">
+    <view class="g-title">云同步（跨设备备份）</view>
+    <view class="row">
+      <text class="r-label">开启云同步</text>
+      <switch checked="{{cloudEnabled}}" bindchange="toggleCloud" color="#2f6fed" />
+    </view>
+    <view class="row" bindtap="restoreFromCloud">
+      <text class="r-label">从云端恢复数据</text>
+      <text class="r-arrow">›</text>
+    </view>
+    <view class="row">
+      <text class="r-label">同步状态</text>
+      <text class="r-val">{{cloudStatusText}}</text>
+    </view>
+    <view class="hint">开启后，课表/成绩/设置会同步到云端（仅本人可见）。换手机、删小程序、重装微信都不丢数据。本地数据始终优先，离线也能用。</view>
+  </view>
+
+  <view class="group">
     <view class="g-title">数据备份</view>
     <view class="row" bindtap="exportAll">
       <text class="r-label">导出全部数据（生成备份码）</text>
@@ -60,6 +77,11 @@
     </view>
     <view class="row" bindtap="showImport">
       <text class="r-label">从备份码恢复</text>
+      <text class="r-arrow">›</text>
+    </view>
+    <view class="row" bindtap="showSnapshots">
+      <text class="r-label">历史快照（自动备份）</text>
+      <text class="r-val" wx:if="{{snapCount}}">{{snapCount}} 份</text>
       <text class="r-arrow">›</text>
     </view>
     <view class="row" bindtap="clearCourses">
@@ -70,6 +92,7 @@
       <text class="r-label danger">清空成绩数据</text>
       <text class="r-arrow">›</text>
     </view>
+    <view class="hint">每次课表/成绩变动会自动保存最近 5 份历史快照，误删、误清后可从「历史快照」找回。</view>
   </view>
 
   <view class="group">
@@ -100,6 +123,31 @@
       <view class="p-btns">
         <view class="btn-ghost" bindtap="closeImport">取消</view>
         <view class="btn-primary" bindtap="doImport">恢复数据</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 历史快照 -->
+  <view class="mask" wx:if="{{snapShow}}" bindtap="closeSnapshots">
+    <view class="panel" catchtap="noop">
+      <view class="p-title">历史快照</view>
+      <view class="share-hint" wx:if="{{snapList.length}}">恢复后当前课表/成绩会被快照内容替换；之前的当前数据若比最新快照新，恢复前可先「导出全部数据」留存。</view>
+      <view class="snap-empty" wx:if="{{!snapList.length}}">暂无快照。课表或成绩变动后会自动留底。</view>
+      <view class="snap-list" wx:if="{{snapList.length}}">
+        <view class="snap-item" wx:for="{{snapList}}" wx:key="t">
+          <view class="snap-info">
+            <text class="snap-time">{{item.timeText}}</text>
+            <text class="snap-meta">课表 {{item.courseCount}} 门 · 成绩 {{item.gradeCount}} 条</text>
+          </view>
+          <view class="snap-restore" data-idx="{{index}}" bindtap="restoreSnap">恢复</view>
+        </view>
+      </view>
+      <view class="p-btns" wx:if="{{snapList.length}}">
+        <view class="btn-ghost" bindtap="clearSnapList">删除全部快照</view>
+        <view class="btn-primary" bindtap="closeSnapshots">关闭</view>
+      </view>
+      <view class="p-btns" wx:else>
+        <view class="btn-primary" bindtap="closeSnapshots">知道了</view>
       </view>
     </view>
   </view>

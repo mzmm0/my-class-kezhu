@@ -60,3 +60,45 @@
   line-height: 1.6;
   margin-bottom: 16rpx;
 }
+
+/* 历史快照 */
+.snap-empty {
+  text-align: center;
+  color: #b0b6c0;
+  font-size: 26rpx;
+  padding: 40rpx 0;
+}
+.snap-list {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.snap-item {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #f5f6fa;
+}
+.snap-item:last-child {
+  border-bottom: none;
+}
+.snap-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.snap-time {
+  font-size: 28rpx;
+  font-weight: 600;
+}
+.snap-meta {
+  font-size: 22rpx;
+  color: #8a8f99;
+  margin-top: 6rpx;
+}
+.snap-restore {
+  background: rgba(47, 111, 237, 0.08);
+  color: #2f6fed;
+  font-size: 26rpx;
+  padding: 10rpx 32rpx;
+  border-radius: 26rpx;
+}

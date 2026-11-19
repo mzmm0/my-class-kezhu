@@ -2,6 +2,7 @@ var store = require('../../utils/store');
 var gpaUtil = require('../../utils/gpa');
 var sharecode = require('../../utils/sharecode');
 var presets = require('../../utils/presets');
+var sync = require('../../utils/sync');
 
 Page({
   data: {
@@ -16,7 +17,16 @@ Page({
     shareShow: false,
     shareCode: '',
     importShow: false,
-    importText: ''
+    importText: '',
+    // 快照
+    snapShow: false,
+    snapList: [],
+    snapCount: 0,
+    // 云同步
+    cloudEnabled: false,
+    cloudReady: false,
+    cloudStatusText: '',
+    cloudSyncing: false
   },
 
   onShow: function () {
@@ -38,6 +48,73 @@ Page({
       dateValue: s.semesterStart
     });
     this.buildTimeRows(s);
+    var snaps = store.loadSnapshots();
+    this.setData({ snapCount: snaps.length });
+    this.refreshCloudStatus();
+  },
+
+  // ---------- 云同步 ----------
+  refreshCloudStatus: function () {
+    var st = sync.getStatus();
+    var text = '';
+    if (!st.ready) {
+      text = st.lastError ? ('不可用：' + st.lastError) : '未初始化';
+    } else if (!st.enabled) {
+      text = '已关闭';
+    } else if (st.syncing) {
+      text = '同步中...';
+    } else if (st.lastSyncAt) {
+      var d = new Date(st.lastSyncAt);
+      var p = function (n) { return (n < 10 ? '0' : '') + n; };
+      text = '已同步 ' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    } else {
+      text = '暂无同步记录';
+    }
+    if (st.lastError && st.ready && st.enabled) text += '（上次失败）';
+    this.setData({
+      cloudReady: st.ready,
+      cloudEnabled: st.enabled,
+      cloudSyncing: st.syncing,
+      cloudStatusText: text
+    });
+  },
+  toggleCloud: function (e) {
+    var on = !!e.detail.value;
+    var that = this;
+    if (!sync.init()) {
+      wx.showToast({ title: '云开发初始化失败', icon: 'none' });
+      this.setData({ cloudEnabled: false });
+      return;
+    }
+    sync.setEnabled(on);
+    this.setData({ cloudEnabled: on });
+    this.refreshCloudStatus();
+    if (on) {
+      wx.showToast({ title: '已开启，正在上传', icon: 'none' });
+      sync.pushAll().then(function () { that.refreshCloudStatus(); });
+    } else {
+      wx.showToast({ title: '已关闭云同步', icon: 'none' });
+    }
+  },
+  restoreFromCloud: function () {
+    var that = this;
+    wx.showModal({
+      title: '从云端恢复',
+      content: '将用云端的课表/成绩/设置覆盖本机数据，继续吗？',
+      success: function (r) {
+        if (!r.confirm) return;
+        wx.showLoading({ title: '恢复中...' });
+        sync.restoreFromCloud().then(function (res) {
+          wx.hideLoading();
+          if (res.ok) {
+            wx.showToast({ title: '已恢复 ' + res.courseCount + ' 门课程', icon: 'success' });
+            that.onShow();
+          } else {
+            wx.showToast({ title: res.error || '云端无数据', icon: 'none' });
+          }
+        });
+      }
+    });
   },
 
   // ---------- 上课时间 ----------
@@ -131,6 +208,60 @@ Page({
     this.onShow();
   },
 
+  // ---------- 历史快照 ----------
+  fmtTime: function (ts) {
+    var d = new Date(ts);
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  },
+  showSnapshots: function () {
+    var list = store.loadSnapshots().map(function (s, i) {
+      return {
+        idx: i,
+        t: s.t,
+        timeText: this.fmtTime(s.t),
+        courseCount: (s.c && s.c.length) || 0,
+        gradeCount: (s.g && s.g.length) || 0
+      };
+    }, this);
+    this.setData({ snapShow: true, snapList: list });
+  },
+  closeSnapshots: function () { this.setData({ snapShow: false }); },
+  restoreSnap: function (e) {
+    var idx = +e.currentTarget.dataset.idx;
+    var snap = this.data.snapList[idx];
+    var that = this;
+    wx.showModal({
+      title: '恢复快照',
+      content: '将 ' + (snap ? snap.timeText : '') + ' 的快照写入当前数据，当前课表/成绩会被替换，继续吗？',
+      success: function (r) {
+        if (!r.confirm) return;
+        var ok = store.restoreSnapshot(idx);
+        that.setData({ snapShow: false });
+        if (ok) {
+          wx.showToast({ title: '已恢复', icon: 'success' });
+          that.onShow();
+        } else {
+          wx.showToast({ title: '快照不存在', icon: 'none' });
+        }
+      }
+    });
+  },
+  clearSnapList: function () {
+    var that = this;
+    wx.showModal({
+      title: '删除全部快照',
+      content: '删除后无法找回，确定吗？',
+      confirmColor: '#e64340',
+      success: function (r) {
+        if (!r.confirm) return;
+        store.clearSnapshots();
+        that.setData({ snapList: [], snapCount: 0 });
+        wx.showToast({ title: '已删除', icon: 'none' });
+      }
+    });
+  },
+
   // ---------- 清空 ----------
   confirmClear: function (title, content, fn) {
     wx.showModal({
@@ -154,7 +285,8 @@ Page({
   },
   clearCourses: function () {
     var that = this;
-    this.confirmClear('清空课表', '将删除全部课程数据', function () {
+    this.confirmClear('清空课表', '将删除全部课程数据（可用历史快照找回）', function () {
+      store.saveCourses(store.loadCourses()); // 确保清空前最新状态已入快照
       store.clearCourses();
       wx.showToast({ title: '已清空', icon: 'none' });
       that.onShow();
@@ -162,7 +294,8 @@ Page({
   },
   clearGrades: function () {
     var that = this;
-    this.confirmClear('清空成绩', '将删除全部成绩数据', function () {
+    this.confirmClear('清空成绩', '将删除全部成绩数据（可用历史快照找回）', function () {
+      store.saveGrades(store.loadGrades()); // 确保清空前最新状态已入快照
       store.clearGrades();
       wx.showToast({ title: '已清空', icon: 'none' });
       that.onShow();

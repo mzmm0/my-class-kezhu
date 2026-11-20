@@ -64,6 +64,7 @@ exports.main = async (event) => {
       var first = courses[0];
 
       // 2) 发送订阅消息（openid 用记录里的 _openid）
+      // 模板「日程提醒」关键词：日程标题(thing) / 上课时间(time) / 地点(thing) / 备注(thing)
       if (!TEMPLATE_ID) { errors.push('未配置 REMIND_TEMPLATE_ID'); break; }
       var sendRes = await cloud.openapi.subscribeMessage.send({
         touser: u._openid,
@@ -71,11 +72,11 @@ exports.main = async (event) => {
         page: 'pages/schedule/schedule',
         miniprogramState: 'formal', // 已发布正式版；体验版测试时临时改 trial
         data: {
-          // 模板字段按实际模板调整；这里按"课程名/时间/地点/第N节"常见字段
-          thing1: { value: (first.name || '').slice(0, 20) },
-          thing2: { value: '今日共' + courses.length + '门课' },
-          thing3: { value: (first.room || '').slice(0, 20) },
-          time4: { value: now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) }
+          // 字段编号以"我的模板"页实际标注为准（thing1/time2/thing3/thing4）
+          thing1: { value: ('今日第' + (first.startPeriod || 1) + '节 ' + (first.name || '')).slice(0, 20) },
+          time2: { value: (first.startTime || '明日 08:00').slice(0, 20) },
+          thing3: { value: (first.room || '见课表').slice(0, 20) },
+          thing4: { value: ('今日共' + courses.length + '门课，点击查看全部').slice(0, 20) }
         }
       }).catch(function (e) {
         errors.push((u._openid || '').slice(0, 8) + ': ' + (e.errMsg || e.message));

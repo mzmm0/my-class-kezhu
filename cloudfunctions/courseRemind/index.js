@@ -1,11 +1,11 @@
 // 云函数：课前提醒（定时触发器每天 07:00 扫描今日有课的用户并推送订阅消息）
-// 模板 ID 优先取环境变量；未配置时用内置值（部署少一步配置，代码即生效）
 const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 
-// 消息模板 ID：内置兜底（公众平台-订阅消息-我的模板「日程提醒」）
-const TEMPLATE_ID = process.env.REMIND_TEMPLATE_ID || 'c0cTNkSZxz5BG1kFdux4EfAF-7whJZAWYDF02aToV9M';
+// 消息模板 ID（公众平台-订阅消息-我的模板「日程提醒」）
+// 直接写死，不读环境变量——避免控制台里配错的环境变量覆盖正确值
+const TEMPLATE_ID = 'c0cTNkSZxz5BG1kFdux4EfAF-7whJZAWYDF02aToV9M';
 
 // ---------- 工具 ----------
 function pad(n) { return (n < 10 ? '0' : '') + n; }

@@ -3,6 +3,8 @@ var dateUtil = require('../../utils/date');
 var presets = require('../../utils/presets');
 var sharecode = require('../../utils/sharecode');
 var parseUtil = require('../../utils/parse');
+var ocrParse = require('../../utils/ocrparse');
+var sync = require('../../utils/sync');
 
 // 网格尺寸（rpx）：左侧时间列 90 + 7 天 × 94 = 748
 var TIME_W = 90;
@@ -112,6 +114,12 @@ Page({
     helpShow: false,
     shareShow: false,
     shareCode: '',
+    // 截图识别
+    ocrImagePath: '',
+    ocrStatus: '',
+    ocrPreviewShow: false,
+    ocrCourses: [],
+    ocrWarnings: [],
     // 导出图片用的离屏画布尺寸（px）
     exportW: 375,
     exportH: 800
@@ -689,6 +697,154 @@ Page({
         that.refresh();
       }
     });
+  },
+
+  // ---------- 截图识别导入 ----------
+  chooseOcrImage: function () {
+    var that = this;
+    wx.chooseImage({
+      count: 1,
+      sizeType: ['compressed', 'original'],
+      sourceType: ['album', 'camera'],
+      success: function (res) {
+        that.setData({ ocrImagePath: res.tempFilePaths[0], ocrStatus: '' });
+      }
+    });
+  },
+  startOcr: function () {
+    var that = this;
+    var path = this.data.ocrImagePath;
+    if (!path) {
+      wx.showToast({ title: '请先选择课表截图', icon: 'none' });
+      return;
+    }
+    if (!wx.cloud) {
+      wx.showToast({ title: '当前环境不支持云函数', icon: 'none' });
+      return;
+    }
+    this.setData({ ocrStatus: '上传截图并识别中，请稍候...' });
+    // 1) 上传到云存储
+    var ext = path.indexOf('.') > -1 ? path.slice(path.lastIndexOf('.')) : '.jpg';
+    var cloudPath = 'ocr/' + Date.now() + (Math.random() * 100000).toFixed(0) + ext;
+    wx.cloud.uploadFile({
+      cloudPath: cloudPath,
+      filePath: path,
+      success: function (up) {
+        // 2) 调云函数识别
+        wx.cloud.callFunction({
+          name: 'ocrTable',
+          data: { fileID: up.fileID },
+          success: function (cf) {
+            var r = cf.result || {};
+            if (!r.ok) {
+              that.setData({ ocrStatus: '' });
+              wx.showModal({ title: '识别失败', content: r.error || '请重试或换一张更清晰的截图', showCancel: false });
+              return;
+            }
+            // 3) 解析为课程：优先用坐标对齐算法（云函数返回 points），
+            //    无 points（表格引擎路径）时退回网格解析
+            var settings = store.loadSettings();
+            var pr = null;
+            if (r.points && r.points.length) {
+              pr = ocrParse.parseByPoints(r.points, settings.totalWeeks);
+            }
+            if (!pr || !pr.ok) {
+              var grid = ocrParse.toGrid(r.rows || r.cells);
+              if (grid) pr = ocrParse.parseGrid(grid, settings.totalWeeks);
+            }
+            if (!pr || !pr.ok) {
+              that.setData({ ocrStatus: '' });
+              wx.showModal({
+                title: '解析失败',
+                content: (pr && pr.error) || '识别到内容但未能解析出课程，请核对截图是教务课表（需包含星期表头与第X节行头）',
+                showCancel: false
+              });
+              return;
+            }
+            // 4) 进预览列表
+            var dayNames = ['', '一', '二', '三', '四', '五', '六', '日'];
+            var list = pr.courses.map(function (c) {
+              var w = c.weeks || {};
+              var wtxt = (w.rangeFrom === 1 && w.rangeTo === 20) ? '全学期' : (w.rangeFrom + '-' + w.rangeTo + '周');
+              if (w.mode === 'odd') wtxt += '·单周';
+              if (w.mode === 'even') wtxt += '·双周';
+              return {
+                key: c.id,
+                name: c.name,
+                teacher: c.teacher,
+                room: c.room,
+                day: c.day,
+                dayName: dayNames[c.day] || c.day,
+                startPeriod: c.startPeriod,
+                endPeriod: c.startPeriod + c.periods - 1,
+                periods: c.periods,
+                weeks: c.weeks,
+                weeksText: wtxt
+              };
+            });
+            that.setData({
+              ocrStatus: '',
+              importShow: false,
+              ocrPreviewShow: true,
+              ocrCourses: list,
+              ocrWarnings: pr.warnings.slice(0, 3)
+            });
+          },
+          fail: function (err) {
+            that.setData({ ocrStatus: '' });
+            wx.showModal({ title: '云函数调用失败', content: (err.errMsg || '请检查云函数 ocrTable 是否已部署') , showCancel: false });
+          }
+        });
+      },
+      fail: function (err) {
+        that.setData({ ocrStatus: '' });
+        wx.showModal({ title: '上传失败', content: err.errMsg || '网络异常，请重试', showCancel: false });
+      }
+    });
+  },
+  removeOcrCourse: function (e) {
+    var idx = +e.currentTarget.dataset.idx;
+    var list = this.data.ocrCourses.slice();
+    if (idx >= 0 && idx < list.length) list.splice(idx, 1);
+    this.setData({ ocrCourses: list });
+  },
+  closeOcrPreview: function () {
+    this.setData({ ocrPreviewShow: false });
+  },
+  reOcr: function () {
+    this.setData({ ocrPreviewShow: false, importShow: true, importTab: 2 });
+  },
+  confirmOcrImport: function () {
+    var list = this.data.ocrCourses;
+    if (!list.length) {
+      wx.showToast({ title: '没有可导入的课程', icon: 'none' });
+      return;
+    }
+    var old = store.loadCourses();
+    var added = 0, dup = 0;
+    list.forEach(function (c) {
+      var exist = old.some(function (o) {
+        return o.name === c.name && o.day === c.day && o.startPeriod === c.startPeriod;
+      });
+      if (exist) { dup++; return; }
+      old.push({
+        id: store.genId(),
+        name: c.name,
+        teacher: c.teacher || '',
+        room: c.room || '',
+        day: c.day,
+        startPeriod: c.startPeriod,
+        periods: c.periods || 2,
+        weeks: c.weeks || { rangeFrom: 1, rangeTo: 20, mode: 'all' }
+      });
+      added++;
+    });
+    store.saveCourses(old);
+    this.setData({ ocrPreviewShow: false, ocrCourses: [] });
+    this.refresh();
+    var msg = '已导入 ' + added + ' 门课程';
+    if (dup) msg += '，跳过重复 ' + dup + ' 门';
+    wx.showToast({ title: msg, icon: 'none' });
   },
 
   // ---------- 导入 ----------

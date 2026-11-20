@@ -188,5 +188,6 @@ module.exports = {
   pushGrades: pushGrades,
   pushSettings: pushSettings,
   pullAll: pullAll,
-  restoreFromCloud: restoreFromCloud
+  restoreFromCloud: restoreFromCloud,
+  upsertPatch: upsert
 };

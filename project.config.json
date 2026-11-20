@@ -3,6 +3,7 @@
   "appid": "wxea1b321d3901972d",
   "projectname": "My Class课助",
   "description": "大学生课表+绩点小助手（数据仅存本机）",
+  "cloudfunctionRoot": "cloudfunctions/",
   "setting": {
     "urlCheck": true,
     "es6": true,

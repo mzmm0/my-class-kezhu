@@ -136,14 +136,29 @@
       <view class="seg">
         <view class="seg-item {{importTab === 0 ? 'seg-on' : ''}}" data-t="0" bindtap="setImportTab">粘贴文本</view>
         <view class="seg-item {{importTab === 1 ? 'seg-on' : ''}}" data-t="1" bindtap="setImportTab">分享码</view>
+        <view class="seg-item {{importTab === 2 ? 'seg-on' : ''}}" data-t="2" bindtap="setImportTab">截图识别</view>
       </view>
       <textarea
+        wx:if="{{importTab === 0 || importTab === 1}}"
         class="imp-area"
         value="{{importText}}"
         bindinput="onImportText"
         maxlength="-1"
         placeholder="{{importTab === 0 ? '在电脑上打开课表 Excel，全选复制后粘贴到这里' : '粘贴好友发给你的课表分享码'}}"
       ></textarea>
+      <!-- 截图识别 -->
+      <view class="ocr-box" wx:if="{{importTab === 2}}">
+        <view class="ocr-tip">选一张教务系统课表截图（表头含星期、行头为第X节），识别后可逐条确认修改。</view>
+        <view class="ocr-img-area" bindtap="chooseOcrImage">
+          <image wx:if="{{ocrImagePath}}" class="ocr-img" src="{{ocrImagePath}}" mode="aspectFit" />
+          <view wx:else class="ocr-placeholder">＋ 选择课表截图</view>
+        </view>
+        <view class="ocr-status" wx:if="{{ocrStatus}}">{{ocrStatus}}</view>
+        <view class="p-btns">
+          <view class="btn-ghost" bindtap="chooseOcrImage">重新选图</view>
+          <view class="btn-primary" bindtap="startOcr">开始识别</view>
+        </view>
+      </view>
       <view class="help-link" wx:if="{{importTab === 0}}" bindtap="toggleHelp">{{helpShow ? '收起格式说明' : '查看格式说明 / 复制模板'}}</view>
       <view class="help-box" wx:if="{{helpShow && importTab === 0}}">
         <text class="help-line">方式一：每行一门课，用 Tab 或逗号分隔：
@@ -155,9 +170,34 @@
 （能自动识别含“周一~周日”表头的网格）</text>
         <view class="mini-btn" bindtap="copyTemplate">复制模板</view>
       </view>
-      <view class="p-btns">
+      <view class="p-btns" wx:if="{{importTab === 0 || importTab === 1}}">
         <view class="btn-ghost" bindtap="closeImport">取消</view>
         <view class="btn-primary" bindtap="doImport">解析并导入</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- OCR 识别结果预览 -->
+  <view class="mask" wx:if="{{ocrPreviewShow}}" bindtap="closeOcrPreview">
+    <view class="panel" catchtap="noop">
+      <view class="p-title">识别结果（{{ocrCourses.length}} 门）</view>
+      <view class="share-hint">请核对每门课，点条目可修改；确认无误后导入。</view>
+      <view class="ocr-preview-list">
+        <view class="ocr-item" wx:for="{{ocrCourses}}" wx:key="key">
+          <view class="oi-main">
+            <text class="oi-name">{{item.name}}</text>
+            <text class="oi-sub">周{{item.dayName}} 第{{item.startPeriod}}-{{item.endPeriod}}节 · {{item.weeksText}}</text>
+            <text class="oi-sub" wx:if="{{item.room}}">{{item.room}}{{item.teacher ? ' · ' + item.teacher : ''}}</text>
+          </view>
+          <view class="oi-del" data-idx="{{index}}" catchtap="removeOcrCourse">删除</view>
+        </view>
+      </view>
+      <view class="ocr-warn" wx:if="{{ocrWarnings.length}}">
+        <text class="help-line">提示：{{item}}</text>
+      </view>
+      <view class="p-btns">
+        <view class="btn-ghost" bindtap="reOcr">重新识别</view>
+        <view class="btn-primary" bindtap="confirmOcrImport">导入这 {{ocrCourses.length}} 门</view>
       </view>
     </view>
   </view>

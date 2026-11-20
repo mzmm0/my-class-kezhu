@@ -1,5 +1,4 @@
 var store = require('../../utils/store');
-var gpaUtil = require('../../utils/gpa');
 var sharecode = require('../../utils/sharecode');
 var presets = require('../../utils/presets');
 var sync = require('../../utils/sync');
@@ -7,8 +6,6 @@ var sync = require('../../utils/sync');
 Page({
   data: {
     s: null,
-    gpaNames: [],
-    gpaIdx: 0,
     weeksOptions: [],
     periodsOptions: [],
     dateValue: '',
@@ -26,23 +23,19 @@ Page({
     cloudEnabled: false,
     cloudReady: false,
     cloudStatusText: '',
-    cloudSyncing: false
+    cloudSyncing: false,
+    // 课前提醒
+    remindOn: false
   },
 
   onShow: function () {
     var s = store.loadSettings();
-    var keys = Object.keys(gpaUtil.GPA_TABLES);
-    var gpaNames = keys.map(function (k) { return gpaUtil.GPA_TABLES[k].name; });
-    var gpaIdx = keys.indexOf(s.gpaType);
-    if (gpaIdx < 0) gpaIdx = 0;
     var weeksOptions = [];
     var periodsOptions = [];
     for (var i = 16; i <= 25; i++) weeksOptions.push(i + ' 周');
     for (var j = 6; j <= 15; j++) periodsOptions.push(j + ' 节');
     this.setData({
       s: s,
-      gpaNames: gpaNames,
-      gpaIdx: gpaIdx,
       weeksOptions: weeksOptions,
       periodsOptions: periodsOptions,
       dateValue: s.semesterStart
@@ -142,6 +135,69 @@ Page({
 
   noop: function () {},
 
+  // ---------- 课前提醒 ----------
+  toggleRemind: function (e) {
+    var on = !!e.detail.value;
+    var that = this;
+    if (!on) {
+      // 关闭：仅存云端开关
+      sync.upsertPatch({ remindOn: false, updatedAt: Date.now() });
+      this.setData({ remindOn: false });
+      wx.showToast({ title: '已关闭提醒', icon: 'none' });
+      return;
+    }
+    // 开启：先拉起订阅授权（一次性订阅，可多点几次积累次数）
+    var conf = require('../../utils/cloudconf');
+    var tpl = conf.REMIND_TEMPLATE_ID;
+    if (!tpl) {
+      wx.showModal({
+        title: '提醒未配置',
+        content: '订阅消息模板 ID 尚未配置（cloudconf.js 的 REMIND_TEMPLATE_ID），请先在公众平台添加模板并填入。',
+        showCancel: false
+      });
+      this.setData({ remindOn: false });
+      return;
+    }
+    wx.requestSubscribeMessage({
+      tmplIds: [tpl],
+      success: function (res) {
+        if (res[tpl] === 'accept') {
+          sync.upsertPatch({ remindOn: true, updatedAt: Date.now() });
+          that.setData({ remindOn: true });
+          wx.showToast({ title: '已开启，明早7点推送', icon: 'none' });
+        } else {
+          that.setData({ remindOn: false });
+          wx.showToast({ title: '未授权订阅', icon: 'none' });
+        }
+      },
+      fail: function () {
+        that.setData({ remindOn: false });
+        wx.showToast({ title: '授权失败，稍后再试', icon: 'none' });
+      }
+    });
+  },
+  // 每天最多推 1 条（一次性订阅一次授权一条），想每天提醒需要点多次授权；
+  // 引导用户多点几次（每次点击开关下的"续订"按钮）
+  addRemindQuota: function () {
+    var that = this;
+    var conf = require('../../utils/cloudconf');
+    var tpl = conf.REMIND_TEMPLATE_ID;
+    if (!tpl) {
+      wx.showToast({ title: '模板未配置', icon: 'none' });
+      return;
+    }
+    wx.requestSubscribeMessage({
+      tmplIds: [tpl],
+      success: function (res) {
+        if (res[tpl] === 'accept') {
+          wx.showToast({ title: '已续订 1 次', icon: 'none' });
+        } else {
+          wx.showToast({ title: '未授权', icon: 'none' });
+        }
+      }
+    });
+  },
+
   // ---------- 设置项 ----------
   save: function (patch) {
     var s = Object.assign({}, this.data.s, patch);
@@ -160,12 +216,6 @@ Page({
   onPeriods: function (e) {
     var v = 6 + (+e.detail.value);
     this.save({ periodCount: v });
-  },
-  onGpa: function (e) {
-    var keys = Object.keys(gpaUtil.GPA_TABLES);
-    var k = keys[+e.detail.value] || '4.0std';
-    this.save({ gpaType: k });
-    this.setData({ gpaIdx: +e.detail.value });
   },
 
   // ---------- 备份 ----------

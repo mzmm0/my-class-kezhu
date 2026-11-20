@@ -41,15 +41,16 @@
   </view>
 
   <view class="group">
-    <view class="g-title">绩点</view>
-    <picker mode="selector" range="{{gpaNames}}" bindchange="onGpa">
-      <view class="row">
-        <text class="r-label">绩点制式</text>
-        <text class="r-val">{{gpaNames[gpaIdx]}}</text>
-        <text class="r-arrow">›</text>
-      </view>
-    </picker>
-    <view class="hint">等级成绩折算：优 95 / 良 85 / 中 75 / 及格 65 / 不及格 40，折算后按所选制式计算。长大方案：绩点＝成绩 ÷ 10 − 5，不足 0 按 0 计。</view>
+    <view class="g-title">课前提醒（每日 7 点推送今日课程）</view>
+    <view class="row">
+      <text class="r-label">开启课前提醒</text>
+      <switch checked="{{remindOn}}" bindchange="toggleRemind" color="#2f6fed" />
+    </view>
+    <view class="row" bindtap="addRemindQuota">
+      <text class="r-label">续订提醒次数（多点几次）</text>
+      <text class="r-arrow">›</text>
+    </view>
+    <view class="hint">微信订阅消息每次授权只能推 1 条：开启后如需每天提醒，隔几天点一次"续订"积累次数。推送为微信"服务通知"（有横幅和声音，效果接近闹钟）。</view>
   </view>
 
   <view class="group">

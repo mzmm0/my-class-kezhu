@@ -1,0 +1,9 @@
+{
+  "name": "ocrTable",
+  "version": "1.0.0",
+  "description": "课表截图表格识别（腾讯云 TableOCR）",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

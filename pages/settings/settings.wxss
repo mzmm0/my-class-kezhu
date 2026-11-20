@@ -51,6 +51,17 @@
   color: #57606e;
   font-weight: 700;
 }
+/* 剩余额度数字 */
+.quota-num {
+  font-size: 26rpx;
+  font-weight: 700;
+}
+.quota-ok {
+  color: #2e9e5b;
+}
+.quota-empty {
+  color: #d98200;
+}
 .about {
   padding: 8rpx 28rpx 28rpx;
   font-size: 24rpx;

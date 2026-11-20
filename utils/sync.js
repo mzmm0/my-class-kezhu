@@ -178,6 +178,50 @@ function restoreFromCloud() {
   });
 }
 
+// ---------- 课前提醒额度台账 ----------
+// 微信不提供“剩余订阅次数”查询接口，只能自己记账：
+//   每次用户点「允许」(授权成功) → 云函数档案 remindQuota + 1
+//   每天 07:00 定时推送成功一条 → 云函数 remindQuota - 1
+// 本地缓存一份用于秒开显示，云端为准
+var QUOTA_KEY = 'kb_remind_quota';
+
+function getRemindQuotaLocal() {
+  var v = wx.getStorageSync(QUOTA_KEY);
+  return typeof v === 'number' ? v : 0;
+}
+
+function incRemindQuota(n) {
+  n = n || 1;
+  var cur = getRemindQuotaLocal() + n;
+  wx.setStorageSync(QUOTA_KEY, cur);
+  if (!isEnabled()) return Promise.resolve(cur);
+  return getMyDoc().then(function (doc) {
+    if (doc && doc._id) {
+      return COLL.doc(doc._id).update({ data: { remindQuota: DB.command.inc(n) } });
+    }
+    // 无云端记录时先建一条（带额度字段）
+    return COLL.add({ data: { courses: [], grades: [], settings: {}, remindQuota: n, updatedAt: Date.now() } });
+  }).then(function () {
+    return cur;
+  }).catch(function () {
+    return cur;
+  });
+}
+
+function getRemindQuota() {
+  var local = getRemindQuotaLocal();
+  if (!isEnabled()) return Promise.resolve(local);
+  return getMyDoc().then(function (doc) {
+    if (doc && typeof doc.remindQuota === 'number') {
+      wx.setStorageSync(QUOTA_KEY, doc.remindQuota);
+      return doc.remindQuota;
+    }
+    return local;
+  }).catch(function () {
+    return local;
+  });
+}
+
 module.exports = {
   init: init,
   isEnabled: isEnabled,
@@ -189,5 +233,7 @@ module.exports = {
   pushSettings: pushSettings,
   pullAll: pullAll,
   restoreFromCloud: restoreFromCloud,
-  upsertPatch: upsert
+  upsertPatch: upsert,
+  incRemindQuota: incRemindQuota,
+  getRemindQuota: getRemindQuota
 };

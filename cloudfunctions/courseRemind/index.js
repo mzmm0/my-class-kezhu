@@ -93,7 +93,17 @@ exports.main = async (event) => {
         errors.push((u._openid || '').slice(0, 8) + ': ' + (e.errMsg || e.message));
         return null;
       });
-      if (sendRes) sent++;
+      if (sendRes) {
+        sent++;
+        // 扣减剩余额度（微信不提供查询接口，靠自己记账）
+        if (typeof u.remindQuota === 'number') {
+          try {
+            await db.collection('kb_user_data').doc(u._id).update({
+              data: { remindQuota: Math.max(0, u.remindQuota - 1) }
+            });
+          } catch (e2) { /* 扣减失败不影响已发出的消息 */ }
+        }
+      }
     } catch (e) {
       errors.push(e.message || String(e));
     }

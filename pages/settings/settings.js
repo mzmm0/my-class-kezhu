@@ -25,7 +25,8 @@ Page({
     cloudStatusText: '',
     cloudSyncing: false,
     // 课前提醒
-    remindOn: false
+    remindOn: false,
+    remindQuota: 0
   },
 
   onShow: function () {
@@ -39,7 +40,16 @@ Page({
       weeksOptions: weeksOptions,
       periodsOptions: periodsOptions,
       dateValue: s.semesterStart,
-      remindOn: wx.getStorageSync('kb_remind_on') === true
+      remindOn: wx.getStorageSync('kb_remind_on') === true,
+      remindQuota: (function () {
+        var v = wx.getStorageSync('kb_remind_quota');
+        return typeof v === 'number' ? v : 0;
+      })()
+    });
+    // 云端额度为准（异步刷新显示）
+    var thatQ = this;
+    sync.getRemindQuota().then(function (q) {
+      thatQ.setData({ remindQuota: q });
     });
     this.buildTimeRows(s);
     var snaps = store.loadSnapshots();
@@ -175,6 +185,7 @@ Page({
           sync.upsertPatch({ remindOn: true, updatedAt: Date.now() });
           wx.setStorageSync('kb_remind_on', true);
           that.markTodaySubscribed(); // 开启时的授权本身就是今天的一条额度
+          sync.incRemindQuota(1).then(function (q) { that.setData({ remindQuota: q }); });
           that.setData({ remindOn: true });
           wx.showModal({
             title: '提醒已开启 🎉',
@@ -207,6 +218,7 @@ Page({
       success: function (res) {
         if (res[tpl] === 'accept') {
           that.markTodaySubscribed();
+          sync.incRemindQuota(1).then(function (q) { that.setData({ remindQuota: q }); });
           wx.showToast({ title: '已续订 1 条额度 ✓', icon: 'none' });
         } else {
           wx.showToast({ title: '未授权', icon: 'none' });

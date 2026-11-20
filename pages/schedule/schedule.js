@@ -145,38 +145,49 @@ Page({
   },
 
   // ---------- 课前提醒续订条 ----------
-  // 微信规则：一次授权=一条额度；此条让用户每天看课表时顺手续订
+  // 微信规则：一次授权=一条额度；额度>0 即明天能收到，用完才需续订
   updateRemindBar: function () {
     var on = wx.getStorageSync('kb_remind_on') === true;
     if (!on) {
       if (this.data.remindBar && this.data.remindBar.show) this.setData({ remindBar: { show: false, done: false, text: '' } });
       return;
     }
-    var d = new Date();
-    var today = d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
-    var done = wx.getStorageSync('kb_remind_last_sub') === today;
-    this.setData({
-      remindBar: {
-        show: true,
-        done: done,
-        text: done ? '✓ 明早 7 点的课程提醒已就绪' : '⏰ 微信规定每天需授权一次，点击保住明早的课程提醒'
-      }
-    });
+    var that = this;
+    var render = function (quota) {
+      var done = quota > 0;
+      that.setData({
+        remindBar: {
+          show: true,
+          done: done,
+          text: done
+            ? ('✓ 明早 7 点提醒已就绪（剩 ' + quota + ' 条额度）')
+            : '⏰ 提醒额度用完了，点一下续订明早的提醒'
+        }
+      });
+    };
+    // 先用本地缓存即时渲染，再拉云端刷新
+    var localQ = wx.getStorageSync('kb_remind_quota');
+    render(typeof localQ === 'number' ? localQ : 0);
+    sync.getRemindQuota().then(function (q) { render(q); });
   },
   remindBarTap: function () {
-    if (this.data.remindBar && this.data.remindBar.done) return; // 今天已续订
+    var that = this;
+    if (this.data.remindBar && this.data.remindBar.done) {
+      // 额度充足，不打扰用户
+      wx.showToast({ title: '额度还够，可去设置页多续几条', icon: 'none' });
+      return;
+    }
     var conf = require('../../utils/cloudconf');
     var tpl = conf.REMIND_TEMPLATE_ID;
     if (!tpl) return;
-    var that = this;
     wx.requestSubscribeMessage({
       tmplIds: [tpl],
       success: function (res) {
         if (res[tpl] === 'accept') {
           var d = new Date();
           wx.setStorageSync('kb_remind_last_sub', d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate());
-          that.updateRemindBar();
-          wx.showToast({ title: '已续订，明早 7 点见', icon: 'none' });
+          sync.incRemindQuota(1).then(function () { that.updateRemindBar(); });
+          wx.showToast({ title: '已续订 1 条，明早 7 点见', icon: 'none' });
         } else {
           wx.showToast({ title: '没续上，明早收不到哦', icon: 'none' });
         }

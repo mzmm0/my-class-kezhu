@@ -50,6 +50,10 @@
       <text class="r-label">续订提醒额度（每天点一次）</text>
       <text class="r-arrow">›</text>
     </view>
+    <view class="row">
+      <text class="r-label">剩余提醒额度</text>
+      <text class="quota-num {{remindQuota > 0 ? 'quota-ok' : 'quota-empty'}}">{{remindQuota}} 条</text>
+    </view>
     <view class="hint">
       <text class="hint-b">为什么每天都要「续订」？
 </text>这是微信的硬性规定，所有小程序都一样：你每点一次「允许」，微信只准它给你发 1 条通知（一次性订阅）。

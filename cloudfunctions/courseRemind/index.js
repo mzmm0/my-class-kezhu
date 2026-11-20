@@ -69,7 +69,7 @@ exports.main = async (event) => {
         touser: u._openid,
         templateId: TEMPLATE_ID,
         page: 'pages/schedule/schedule',
-        miniprogramState: 'trial', // 体验版（正式发布后改 formal）
+        miniprogramState: 'formal', // 已发布正式版；体验版测试时临时改 trial
         data: {
           // 模板字段按实际模板调整；这里按"课程名/时间/地点/第N节"常见字段
           thing1: { value: (first.name || '').slice(0, 20) },

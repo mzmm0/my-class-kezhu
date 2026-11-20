@@ -1,4 +1,4 @@
-var store = require('../../utils/store');
+﻿var store = require('../../utils/store');
 var sharecode = require('../../utils/sharecode');
 var presets = require('../../utils/presets');
 var sync = require('../../utils/sync');
@@ -189,7 +189,7 @@ Page({
           that.setData({ remindOn: true });
           wx.showModal({
             title: '提醒已开启 🎉',
-            content: '记住这条规则：微信规定“每允许一次 = 只能推 1 条”。所以想每天早上都收到，就每天点一次“续订”（课表页顶部也有快捷入口，点一下 3 秒搞定）。今天这 1 条额度已经到手，明早 7 点见！',
+            content: '记住这条规则：微信规定“每允许一次 = 只能推 1 条”。所以想每天早上都收到，就每天点一次“续订”（课表页顶部也有快捷入口，点一下 3 秒搞定）。现在已有 1 条额度：明早 7:30 推上午课、13:30 推下午课（该时段有课才推）',
             showCancel: false,
             confirmText: '知道了'
           });

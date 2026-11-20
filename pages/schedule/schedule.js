@@ -1,4 +1,4 @@
-var store = require('../../utils/store');
+﻿var store = require('../../utils/store');
 var dateUtil = require('../../utils/date');
 var presets = require('../../utils/presets');
 var sharecode = require('../../utils/sharecode');
@@ -160,7 +160,7 @@ Page({
           show: true,
           done: done,
           text: done
-            ? ('✓ 明早 7 点提醒已就绪（剩 ' + quota + ' 条额度）')
+            ? ('✓ 明日提醒已就绪（剩 ' + quota + ' 条额度）')
             : '⏰ 提醒额度用完了，点一下续订明早的提醒'
         }
       });
@@ -187,7 +187,7 @@ Page({
           var d = new Date();
           wx.setStorageSync('kb_remind_last_sub', d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate());
           sync.incRemindQuota(1).then(function () { that.updateRemindBar(); });
-          wx.showToast({ title: '已续订 1 条，明早 7 点见', icon: 'none' });
+          wx.showToast({ title: '已续订 1 条额度', icon: 'none' });
         } else {
           wx.showToast({ title: '没续上，明早收不到哦', icon: 'none' });
         }

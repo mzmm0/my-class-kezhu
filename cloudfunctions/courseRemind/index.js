@@ -42,10 +42,19 @@ function courseVisible(c, week) {
 }
 
 // ---------- 主入口 ----------
+// 每天两次：上午 7:30 推上午的课，下午 13:30 推下午的课；该时段没课不推
+// 手动测试：{ test: true, date: '2026-11-24', time: '13:30' }（time 不传默认 07:30）
 exports.main = async (event) => {
-  // 支持手动测试调用：{ test: true, date: '2026-11-20' }
-  var now = event && event.date ? new Date(event.date + 'T07:00:00') : new Date();
+  var now;
+  if (event && event.date) {
+    now = new Date(event.date + 'T' + (event.time || '07:30:00'));
+  } else {
+    // 云函数运行时区是 UTC：+8 小时后 get* 得到的才是北京时间钟面
+    now = new Date(Date.now() + 8 * 3600 * 1000);
+  }
   var day = dayNo(now);
+  var hour = now.getHours();
+  var isMorning = hour < 12; // 7:30 触发=上午档，13:30 触发=下午档
 
   // 1) 读所有开了提醒的用户档案（kb_user_data 里 remindOn 字段）
   var res = await db.collection('kb_user_data').where({ remindOn: true }).get();
@@ -57,37 +66,46 @@ exports.main = async (event) => {
     try {
       var settings = u.settings || {};
       var week = weekNo(settings.semesterStart, now);
+      var ptArr = (settings.periodTimes && settings.periodTimes.length) ? settings.periodTimes : PERIOD_TIMES;
+      // 课程归上午/下午/晚上（按作息表该课的开始时刻）
+      function slotOf(c) {
+        var t = ptArr[(c.startPeriod || 1) - 1] || '08:00';
+        var hh = parseInt(String(t).split(':')[0], 10) || 8;
+        if (hh < 12) return 'am';
+        if (hh < 18) return 'pm';
+        return 'night';
+      }
+      // 今天该时段的课（上午档只看上午课，下午档只看下午课；晚上课不提醒）
+      var slot = isMorning ? 'am' : 'pm';
       var courses = (u.courses || []).filter(function (c) {
-        return c.day === day && courseVisible(c, week);
+        return c.day === day && courseVisible(c, week) && slotOf(c) === slot;
       }).sort(function (a, b) { return (a.startPeriod || 1) - (b.startPeriod || 1); });
 
-      if (!courses.length) { skipped++; continue; }
+      if (!courses.length) { skipped++; continue; } // 该时段没课：不推送
 
-      // 今日课程摘要文本
-      var lines = courses.slice(0, 5).map(function (c) {
-        return '第' + (c.startPeriod || 1) + '节 ' + (c.name || '') + (c.room ? '@' + c.room : '');
-      });
-      var summary = lines.join('\n');
-      if (courses.length > 5) summary += '\n...共' + courses.length + '门';
       var first = courses[0];
-      // 首节上课时刻（settings.periodTimes 可覆盖默认作息）
-      var ptArr = (settings.periodTimes && settings.periodTimes.length) ? settings.periodTimes : PERIOD_TIMES;
       var startTime = ptArr[(first.startPeriod || 1) - 1] || '08:00';
+      var label = isMorning ? '上午' : '下午';
+      // 摘要（thing 限 20 字）："8:00高数 10:05英语"
+      var digest = courses.map(function (c) {
+        var t = ptArr[(c.startPeriod || 1) - 1] || '08:00';
+        var nm = String(c.name || '').replace(/[（(][^)）]*[)）]/g, '').trim();
+        return t + nm.slice(0, 4);
+      }).join(' ').slice(0, 20);
 
-      // 2) 发送订阅消息（openid 用记录里的 _openid）
-      // 模板「日程提醒」字段编号（以"我的模板"详情页为准）：
-      // 日程标题=thing5 / 上课时间=time57 / 地点=thing10 / 备注=thing11
+      // 2) 发送订阅消息
+      // 模板「日程提醒」字段编号：日程标题=thing5 / 上课时间=time57 / 地点=thing10 / 备注=thing11
       if (!TEMPLATE_ID) { errors.push('未配置模板ID'); break; }
       var sendRes = await cloud.openapi.subscribeMessage.send({
         touser: u._openid,
         templateId: TEMPLATE_ID,
         page: 'pages/schedule/schedule',
-        miniprogramState: 'formal', // 已发布正式版；体验版测试时临时改 trial
+        miniprogramState: 'formal',
         data: {
-          thing5: { value: ('今日第' + (first.startPeriod || 1) + '节 ' + (first.name || '')).slice(0, 20) },
+          thing5: { value: (label + courses.length + '节课 ' + startTime + '起').slice(0, 20) },
           time57: { value: now.getFullYear() + '年' + (now.getMonth() + 1) + '月' + now.getDate() + '日 ' + startTime },
           thing10: { value: (first.room || '见课表').slice(0, 20) },
-          thing11: { value: ('今日共' + courses.length + '门课，点击查看').slice(0, 20) }
+          thing11: { value: (digest || (first.name || '')).slice(0, 20) }
         }
       }).catch(function (e) {
         errors.push((u._openid || '').slice(0, 8) + ': ' + (e.errMsg || e.message));

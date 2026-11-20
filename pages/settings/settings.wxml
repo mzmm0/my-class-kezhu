@@ -41,7 +41,7 @@
   </view>
 
   <view class="group">
-    <view class="g-title">课前提醒（每日 7 点推送今日课程）</view>
+    <view class="g-title">课前提醒（每天 7:30 推上午课、13:30 推下午课）</view>
     <view class="row">
       <text class="r-label">开启课前提醒</text>
       <switch checked="{{remindOn}}" bindchange="toggleRemind" color="#2f6fed" />
@@ -55,14 +55,17 @@
       <text class="quota-num {{remindQuota > 0 ? 'quota-ok' : 'quota-empty'}}">{{remindQuota}} 条</text>
     </view>
     <view class="hint">
-      <text class="hint-b">为什么每天都要「续订」？
-</text>这是微信的硬性规定，所有小程序都一样：你每点一次「允许」，微信只准它给你发 1 条通知（一次性订阅）。
+      <text class="hint-b">什么时候推？
+</text>每天两次：早上 7:30 推当天的上午课，中午 13:30 推当天的下午课。哪个时段没课就不推，绝不打扰。
+
+<text class="hint-b">为什么每天都要「续订」？
+</text>这是微信的硬性规定：你每点一次「允许」，微信只准小程序给你发 1 条通知（一次性订阅）。一天最多用 2 条（上午+下午），想天天收到就要每天来点一次。
 
 <text class="hint-b">打个比方：像充话费
-</text>点一次「允许」= 充 1 块钱 = 够发 1 天的提醒；想天天收到，就得每天充一次。哪天忘了充，那天早上就没推送（课表本身不受任何影响）。
+</text>点一次「允许」= 充 1 块钱 = 够发 1 条。哪天忘了充，那个时段就没推送（课表本身不受任何影响）。
 
 <text class="hint-b">最省事的充法
-</text>每天打开小程序看课表时，顶部有个黄色的「⏰ 续订提醒」小条，点一下 → 允许，3 秒搞定，明早 7 点准时到。
+</text>每天打开小程序看课表时，顶部有黄色「续订」小条，点一下 → 允许，3 秒搞定。
     </view>
   </view>
 

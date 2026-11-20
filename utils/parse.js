@@ -47,10 +47,12 @@ function weekVisible(weeks, week, totalWeeks) {
   var w = weeks || { mode: 'all', rangeFrom: 1, rangeTo: totalWeeks || 20 };
   var from = w.rangeFrom || 1;
   var to = w.rangeTo || (totalWeeks || 20);
+  // 边界收紧：明确给了范围时（from>1 或 to<总周数），范围外一律不可见
+  var bounded = w.mode === 'range' || from > 1 || to < (totalWeeks || 20);
   var inBounds = week >= from && week <= to;
   if (w.mode === 'odd') return week % 2 === 1 && inBounds;
   if (w.mode === 'even') return week % 2 === 0 && inBounds;
-  if (w.mode === 'range') return inBounds;
+  if (bounded) return inBounds;
   return true;
 }
 

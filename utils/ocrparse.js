@@ -238,20 +238,56 @@ function locateHeaders(grid) {
 // ---------- 单元格文本 -> 课程条目 ----------
 // 格式：课程名(编号)(教师) (起周-止周[,单双],教室) [课程名(编号)(教师) (周次,教室)...]
 // 以 "(周次,教室)" 锚点切段：每段 = 锚点前的课程信息 + 锚点本身
+// 锚点提取（供分组判定与文本解析共用）：
+//   标准锚点：括号内含数字且用逗号分隔（周次,教室），如 (1-15,武教A-103)
+//   无逗号变体：(7-10组2)、(1-15) —— 仅当括号内是周次形态（区间/含周/含组）才视为锚点；
+//   纯课程编号如 (786341) 不含这些特征，不算锚点
+function findAnchors(t) {
+  var spans = [], m;
+  var reStd = /[（(]\s*([^()（）]*?\d[^()（）]*?)\s*[,，]\s*([^()（）]*?)\s*[)）]/g;
+  while ((m = reStd.exec(t))) {
+    spans.push({ start: m.index, end: m.index + m[0].length, weeksRaw: m[1].trim(), room: m[2].trim(), full: m[0] });
+  }
+  // 第二遍：无逗号变体（周次形态：区间 或 含周/组）——始终执行，
+  // 补充与第一遍区间不重叠的无逗号锚点（同格可同时存在带逗号与无逗号两种锚点，
+  // 如"线性代数(单1-13,武教B-103) 普通地质学(7-10组2)"）
+  {
+    var reNoComma = /[（(]\s*([^()（）]*?\d[^()（）]*?)\s*[)）]/g;
+    while ((m = reNoComma.exec(t))) {
+      var wtxt = m[1].trim();
+      var isWeekForm = /\d\s*[-–~至]\s*\d/.test(wtxt) || /周|组/.test(wtxt);
+      if (!isWeekForm) continue;
+      var st = m.index, en = m.index + m[0].length;
+      var overlap = spans.some(function (s0) { return st < s0.end && en > s0.start; });
+      if (!overlap) spans.push({ start: st, end: en, weeksRaw: wtxt, room: '', full: m[0] });
+    }
+    spans.sort(function (a, b) { return a.start - b.start; });
+  }
+  return spans;
+}
+
 function parseCellText(text) {
   var items = [];
   var t = String(text || '').replace(/\r/g, ' ').replace(/\n+/g, ' ').replace(/\s{2,}/g, ' ').trim();
   if (!t) return items;
 
-  // 锚点：括号内含数字且用逗号分隔（周次,教室）；如 (1-15,武教A-103) (1-16双周,武教B-402)
-  var re = /[（(]\s*([^()（）]*\d[^()（）]*)\s*[,，]\s*([^()（）]*)\s*[)）]/g;
-  var spans = [], m;
-  while ((m = re.exec(t))) spans.push({ start: m.index, end: m.index + m[0].length, weeksRaw: m[1].trim(), room: m[2].trim(), full: m[0] });
+  var spans = findAnchors(t);
 
   if (!spans.length) {
     // 无锚点：整格按一门课处理（信息不全时仍给用户预览修正的机会）
-    var name = t.replace(/[（(][^()（）]*[)）]/g, '').trim();
-    if (name) items.push({ name: name, teacher: '', room: '', weeks: { rangeFrom: 1, rangeTo: 20, mode: 'all' }, raw: t });
+    var name0 = t.replace(/[（(][^()（）]*[)）]/g, ' ').trim();
+    // OCR 断行拼接会留下未闭合的锚点尾巴（如"线性代数(9-12,实验武实验"），剔除；
+    // 教室碎片尾部可能残留未配对的右括号（如"楼A106)"）
+    name0 = name0.replace(/\s*[（(][^()（）]*$/, '').trim();
+    name0 = name0.replace(/\s*[楼栋][A-Za-z]?\d*\)?\s*$/, '').trim();
+    // 教师尝试：末尾短括号人名（排除含数字与实验标注）
+    var teacher0 = '';
+    var mT0 = t.match(/[（(]\s*([^()（）]{2,4})\s*[)）]\s*$/);
+    if (mT0) {
+      var cand0 = mT0[1].replace(/\s+/g, '');
+      if (!/\d/.test(cand0) && !/实验|项目|分组|上机|实践/.test(cand0)) teacher0 = cand0;
+    }
+    if (name0) items.push({ name: name0, teacher: teacher0, room: '', weeks: { rangeFrom: 1, rangeTo: 20, mode: 'all' }, raw: t });
     return items;
   }
 
@@ -259,20 +295,25 @@ function parseCellText(text) {
   spans.forEach(function (sp) {
     var seg = t.slice(prevEnd, sp.end).trim();
     prevEnd = sp.end;
+    var prefixLen = seg.length - sp.full.length;
+    var prefix = prefixLen > 0 ? seg.slice(0, prefixLen).trim() : '';
+    if (!prefix && items.length) {
+      // 纯锚点段（无课程名，多为 OCR 横行粘连/断行把别的格子的周次行拼进来）：
+      // 并入前一门课，用本锚点的周次/教室覆盖（本锚点更靠近课程自己格子的概率更高）
+      var last = items[items.length - 1];
+      last.weeks = parseWeeksRaw(sp.weeksRaw);
+      if (sp.room) last.room = sp.room.replace(/\s+/g, '');
+      return;
+    }
     var it = parseOneCourse(seg, sp);
     if (it) items.push(it);
   });
   return items;
 }
 
-// 单段（含尾部锚点）解析
-function parseOneCourse(seg, sp) {
-  // 前缀 = 段去掉尾部锚点
-  var prefix = seg.slice(0, seg.length - sp.full.length).trim();
-
-  // 周次：1-15 / 3-17 / 第1周 / 单双修饰
+// 周次文本 -> weeks 对象
+function parseWeeksRaw(w) {
   var weeks = { rangeFrom: 1, rangeTo: 20, mode: 'all' };
-  var w = sp.weeksRaw;
   var mR = w.match(/(\d+)\s*[-–~至]\s*(\d+)/);
   if (mR) {
     weeks.rangeFrom = +mR[1];
@@ -283,18 +324,38 @@ function parseOneCourse(seg, sp) {
   }
   if (/单周|单/.test(w) && !/双/.test(w)) weeks.mode = 'odd';
   else if (/双周|双/.test(w)) weeks.mode = 'even';
+  return weeks;
+}
 
-  // 教师：前缀末尾的短括号（2-4 字）
+// 单段（含尾部锚点）解析
+function parseOneCourse(seg, sp) {
+  // 前缀 = 段去掉尾部锚点
+  var prefix = seg.slice(0, seg.length - sp.full.length).trim();
+
+  var weeks = parseWeeksRaw(sp.weeksRaw);
+
+  // 教师：前缀末尾的短括号（2-4 字人名）；
+  // 排除实验类标注（实验/项目/组N/分组等）——它们并入课程名备注
   var teacher = '';
   var mT = prefix.match(/[（(]\s*([^()（）]{2,4})\s*[)）]\s*$/);
   if (mT) {
-    teacher = mT[1].trim();
-    prefix = prefix.slice(0, mT.index).trim();
+    var cand = mT[1].trim().replace(/\s+/g, '');
+    var isExpMark = /实验|项目|分组|上机|实践/.test(cand);
+    if (!isExpMark) {
+      teacher = cand;
+      prefix = prefix.slice(0, mT.index).trim();
+    }
   }
-  // 课程名：去掉编号括号（4 位以上数字）
-  var name = prefix.replace(/[（(]\s*\d{4,}\s*[)）]/g, '').replace(/\s+/g, ' ').trim();
+  // 课程名：去掉编号括号（4 位以上数字）与实验类标注括号；清理 OCR 乱码杂字（替换问号/菱形/星开头的杂字）
+  var name = prefix.replace(/[（(]\s*\d{4,}\s*[)）]/g, '').trim();
+  name = name.replace(/[（(]\s*(实验|物电实验项目|上机|实践)[)）]/g, '').replace(/\s+/g, ' ').trim();
+  // OCR 断行拼接会留下未闭合的锚点尾巴（如"线性代数(9-12,实验武实验"），剔除
+  name = name.replace(/\s*[（(][^()（）]*$/, '').trim();
+  name = name.replace(/^[\uFFFD\u25C6\u2605\u2047\u2048\u2049]+\s*/, ''); // 开头乱码杂字（� ◆ ★ ⁇ ⁈ ⁉）
+  name = name.replace(/[\uFFFD\u25C6\u2605]/g, ''); // 内嵌乱码字符
+  name = name.replace(/^(星|期|星期|期星)+\s*/, ''); // 表头碎片混入（"星""期""星期"开头的杂字）
   if (!name) return null;
-  return { name: name, teacher: teacher, room: sp.room, weeks: weeks, raw: seg };
+  return { name: name, teacher: teacher, room: (sp.room || '').replace(/\s+/g, ''), weeks: weeks, raw: seg };
 }
 
 // ---------- 主入口 ----------
@@ -381,21 +442,7 @@ function parseByPoints(points, totalWeeks) {
     return { text: t, x: p.x, y: p.y, w: p.w || 0, h: p.h || 0, cx: cx, cy: cy };
   }).filter(function (p) { return p.text; });
 
-  // 1) 表头块
-  var dayHeads = pts.filter(function (p) {
-    var k = p.text.replace(/\s/g, '');
-    return DAY_MAP[k] && k.length <= 3;
-  });
-  if (dayHeads.length < 2) return { ok: false, error: '未识别到星期表头' };
-  // 去重（不同格子的同一天取最左）
-  var dayMap = {};
-  dayHeads.forEach(function (p) {
-    var d = DAY_MAP[p.text.replace(/\s/g, '')];
-    if (!dayMap[d] || p.cx < dayMap[d].cx) dayMap[d] = p;
-  });
-  var days = Object.keys(dayMap).map(Number).sort(function (a, b) { return dayMap[a].cx - dayMap[b].cx; }); // 按 x 位置排序
-
-  // 2) 行头块（第X节）
+  // 2) 行头块（第X节）——先于表头识别（表头 y 判定要用行头位置）
   var rowHeads = {};
   pts.forEach(function (p) {
     var m = p.text.replace(/\s/g, '').match(/^第([0-9一二三四五六七八九十]+)节/);
@@ -406,6 +453,66 @@ function parseByPoints(points, totalWeeks) {
   });
   var periodNos = Object.keys(rowHeads).map(Number).sort(function (a, b) { return rowHeads[a].cy - rowHeads[b].cy; });
   if (!periodNos.length) return { ok: false, error: '未识别到节次行头' };
+
+  // 1) 表头块（容忍 OCR 噪声："星�三""星期三”“星期=三"等）
+  //    硬约束：表头必须在表格顶部区域（第一个行头上方的带内），正文课程文字不得当表头
+  //    匹配形态约束：只认"星期X/周X/礼拜X"形态或完整3字（'一''二'等单字必须排除，
+  //    否则"第一节"含'一'字会被误当表头，导致整个列边界错位）
+  function dayFromText(raw) {
+    var k = String(raw || '').replace(/\s/g, '');
+    if (DAY_MAP[k] && k.length >= 2) return DAY_MAP[k]; // 完整形态（星期X/周X/礼拜X，≥2字）
+    // 宽容匹配：去掉非表头字符后剩"星X/期X"式 2 字残留（乱码表头"星�三"清洗后为"星三"）
+    var cleaned = k.replace(/[^星期一二三四五六日]/g, '');
+    if (cleaned.length === 2 && /星|期/.test(cleaned) && DAY_MAP[cleaned.charAt(1)]) {
+      return DAY_MAP[cleaned.charAt(1)];
+    }
+    if (cleaned.length >= 2 && cleaned.length <= 3 && DAY_MAP[cleaned] && /星|期/.test(cleaned)) {
+      return DAY_MAP[cleaned];
+    }
+    return 0;
+  }
+  var firstRowY = rowHeads[periodNos[0]].y;
+  var dayHeads = pts.filter(function (p) {
+    if (!dayFromText(p.text)) return false;
+    // 表头带：顶部区域（行头上方的 2.2 倍行高带内），且 x 必须在行头右侧（课程列区域）
+    if (p.y > firstRowY + 30) return false;
+    return true;
+  });
+  if (dayHeads.length < 2) return { ok: false, error: '未识别到星期表头' };
+  // 去重（同一天取最左）
+  var dayMap = {};
+  dayHeads.forEach(function (p) {
+    var d = dayFromText(p.text);
+    if (!dayMap[d] || p.cx < dayMap[d].cx) dayMap[d] = p;
+  });
+  var days = Object.keys(dayMap).map(Number).sort(function (a, b) { return dayMap[a].cx - dayMap[b].cx; }); // 按 x 位置排序
+
+  // 1b) 缺列推断：仅当表头间距均匀（每对相邻表头间距偏差 < 15%）才插值；
+  //     且只补主课表区（周一~周五）内的缺口。防止截图右侧截断的周六列引发错位
+  var dayNums = days.slice().sort(function (a, b) { return a - b; });
+  var xs = dayNums.map(function (d) { return dayMap[d].cx; });
+  var spacings = [];
+  for (var si = 1; si < xs.length; si++) spacings.push(xs[si] - xs[si - 1]);
+  var spAvg = spacings.length ? spacings.reduce(function (s, v) { return s + v; }, 0) / spacings.length : 0;
+  var uniform = spacings.length > 0 && spacings.every(function (s) { return Math.abs(s - spAvg) < spAvg * 0.15; });
+  var filled = [];
+  for (var di = 0; di < dayNums.length; di++) {
+    var cur = dayNums[di];
+    filled.push(cur);
+    if (di + 1 < dayNums.length && uniform) {
+      var nxt = dayNums[di + 1];
+      if (nxt - cur === 2) {
+        // 缺一个中间日：位置取两表头 x 中点；仅补 1~5（主课表区）
+        var missDay = cur + 1;
+        if (missDay <= 5) {
+          var mid = (dayMap[cur].cx + dayMap[nxt].cx) / 2;
+          dayMap[missDay] = { cx: mid, text: '星期' + '一二三四五六日'.charAt(missDay - 1), virtual: true };
+          filled.push(missDay);
+        }
+      }
+    }
+  }
+  days = filled.sort(function (a, b) { return dayMap[a].cx - dayMap[b].cx; });
 
   // 3) 列边界：相邻表头中点分界；列区间 = [左界, 右界)
   var colBounds = [];
@@ -420,6 +527,8 @@ function parseByPoints(points, totalWeeks) {
   // 4) 归位：跳过表头块与行头块
   var headerTexts = {};
   dayHeads.forEach(function (p) { headerTexts[p.text] = 1; });
+  // 任何能被识别为星期表头的文本（含乱码变体）都跳过，防止其被当课程
+  pts.forEach(function (p) { if (dayFromText(p.text)) headerTexts[p.text] = 1; });
   Object.keys(rowHeads).forEach(function (k) { headerTexts[rowHeads[k].text] = 1; });
   var skipRe = /^课表格式说明|午间课|晚间课|节次|周次/;
   // 先按列收集（x 归列），列内再按 y 聚类成"格"（同格多行文字 y 间距小）
@@ -434,38 +543,77 @@ function parseByPoints(points, totalWeeks) {
     if (!colCells[day]) colCells[day] = [];
     colCells[day].push(p);
   });
-  // 列内按 y 聚类：间距 < 聚类阈值（相邻行头距离的 45%）视为同格
+  // 4b) 行带划分（核心：往左找大节数的坐标化实现）
+  //     教务课表的行头"第X节"文字在格内垂直居中，而课程文字从格顶开始（可高于行头半个格高），
+  //     故不能用"行头 y <= 课程顶"归行；改为：相邻行头中心的中点把 y 轴切成行带，
+  //     每块文字按中心 cy 归带，带序号即大节序号（第 N 带 = 第 N 大节 = 小节 2N-1、2N）
+  var headCys = periodNos.map(function (n) { return rowHeads[n].cy; }); // 已按 cy 升序
+  var bandEdges = [];
+  for (var b = 1; b < headCys.length; b++) bandEdges.push((headCys[b - 1] + headCys[b]) / 2);
+  function bandOf(cy) {
+    var bi = 0;
+    for (var b2 = 0; b2 < bandEdges.length; b2++) { if (cy >= bandEdges[b2]) bi = b2 + 1; }
+    return bi;
+  }
+  var headGaps = [];
+  for (var hg = 1; hg < headCys.length; hg++) headGaps.push(headCys[hg] - headCys[hg - 1]);
+  var gapAvg = headGaps.length ? headGaps.reduce(function (s, v) { return s + v; }, 0) / headGaps.length : 80;
+  // 块文本是否含周次锚点（格子"收尾行"特征：周次+教室）
+  function hasAnchorText(t) { return findAnchors(String(t || '')).length > 0; }
+
+  // 列内分组：同带必并（格内行距可达 0.6*行距，纯间距阈值会拆格）；
+  // 跨带仅当"组未收尾（无锚点）+ 只进下一带 + 间距很小"才延续（覆盖跨大节合并单元格，如实验课）
   var courses = [];
   var warnings = [];
   Object.keys(colCells).forEach(function (dayStr) {
     var day = +dayStr;
     var blocks = colCells[day].slice().sort(function (a, b) { return a.y - b.y; });
-    // 聚类阈值：用行头平均间距的 45%；行头只有 1 个时用 60
-    var headYs = periodNos.map(function (n) { return rowHeads[n].y; }).sort(function (a, b) { return a - b; });
-    var gaps = [];
-    for (var g = 1; g < headYs.length; g++) gaps.push(headYs[g] - headYs[g - 1]);
-    var gapAvg = gaps.length ? gaps.reduce(function (s, v) { return s + v; }, 0) / gaps.length : 80;
-    var thresh = gapAvg * 0.45;
-    // 聚类
     var groups = [];
     var cur = null;
-    blocks.forEach(function (p) {
-      if (!cur) { cur = { blocks: [p], minY: p.y, maxY: p.y + p.h }; return; }
-      // 与当前组最大 y 的距离
-      if (p.y - cur.maxY < thresh) { cur.blocks.push(p); cur.maxY = Math.max(cur.maxY, p.y + p.h); }
-      else { groups.push(cur); cur = { blocks: [p], minY: p.y, maxY: p.y + p.h }; }
+      blocks.forEach(function (p) {
+        if (!cur) {
+          cur = { blocks: [p], minY: p.y, maxY: p.y + p.h, anchored: hasAnchorText(p.text) };
+          return;
+        }
+        var bNew = bandOf(p.cy);
+        var gap = p.y - cur.maxY;
+        var tailBand = bandOf(cur.blocks[cur.blocks.length - 1].cy);
+        var canJoin = false;
+        if (bNew === tailBand) {
+          canJoin = true; // 与组尾块同带（格内行距可达 0.6 行距，纯间距阈值会拆格）
+        } else if (bNew === tailBand + 1 && !cur.anchored && gap < gapAvg * 0.35) {
+          canJoin = true; // 跨带延续：组未收尾（无锚点）且间距很小——跨大节合并单元格
+        }
+      if (canJoin) {
+        cur.blocks.push(p);
+        if (p.y + p.h > cur.maxY) cur.maxY = p.y + p.h;
+        // 锚点判定用组内拼接文本：断行锚点（如"(3-17,武体育馆篮"+"球场)"）跨块拼才能闭合
+        if (!cur.anchored && hasAnchorText(cur.blocks.map(function (q) { return q.text; }).join(' '))) cur.anchored = true;
+      } else {
+        groups.push(cur);
+        cur = { blocks: [p], minY: p.y, maxY: p.y + p.h, anchored: hasAnchorText(p.text) };
+      }
     });
     if (cur) groups.push(cur);
-    // 每组（=一格）定行：组的首块 y 与最近的行头（小于该 y 的最大行头 y）
+    // 每组归行：主带 = 组内块带序的众数（平局取靠前的带，即首块所在带）
     groups.forEach(function (grp) {
-      var topY = grp.minY;
-      var period = 0;
-      for (var r = 0; r < periodNos.length; r++) {
-        var hy = rowHeads[periodNos[r]].y;
-        if (hy <= topY + gapAvg * 0.3) period = periodNos[r]; // 行头 y 不超过组顶太多
-      }
-      // 上面循环会取到最后满足条件的行头；若组在表头行上方则 period=0 跳过
+      var counts = {}, order = [];
+      grp.blocks.forEach(function (p) {
+        var b3 = bandOf(p.cy);
+        if (counts[b3] === undefined) { counts[b3] = 0; order.push(b3); }
+        counts[b3]++;
+      });
+      var band = order[0], maxN = -1;
+      order.forEach(function (b4) { if (counts[b4] > maxN) { maxN = counts[b4]; band = b4; } });
+      if (band >= periodNos.length) band = periodNos.length - 1;
+      var period = periodNos[band];
       if (!period) return;
+      // 跨大节节数：组底越过带边界 + 余量（文字底边压线不算，防误判）
+      var span = 1;
+      for (var s2 = band; s2 < bandEdges.length; s2++) {
+        if (grp.maxY > bandEdges[s2] + gapAvg * 0.1) span++;
+        else break;
+      }
       var text = grp.blocks.map(function (p) { return p.text; }).join(' ');
       parseCellText(text).forEach(function (it) {
         courses.push({
@@ -475,7 +623,7 @@ function parseByPoints(points, totalWeeks) {
           room: it.room,
           day: day,
           startPeriod: period * 2 - 1,
-          periods: 2,
+          periods: span * 2,
           weeks: it.weeks
         });
       });

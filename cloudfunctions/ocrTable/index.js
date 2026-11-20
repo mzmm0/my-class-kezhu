@@ -115,14 +115,27 @@ exports.main = async (event) => {
     const creds = { secretId, secretKey };
     let result = null;
     let engineUsed = '';
+    let points = null;
+    let debugCell = null;
 
     // 层1：表格识别 V3（RecognizeTableOCR，对彩色/难例表格效果好）
     try {
       const respV3 = await tencentRequest('RecognizeTableOCR', { ImageBase64: imageBase64 }, creds);
       const b3 = respV3.Response || {};
       if (!b3.Error && b3.TableDetections && b3.TableDetections.length) {
+        const det = (b3.TableDetections && b3.TableDetections[0]) || {};
+        const v3Cells = det.Cells || det.MergedCells || [];
         result = normalizeV3(b3);
         engineUsed = 'v3';
+        // 深度递归提取坐标（兼容任意字段命名）
+        points = v3Cells.filter(c => c.Text && String(c.Text).trim()).map(c => {
+          const rc = deepFindRect(c);
+          return { text: c.Text, x: rc.x, y: rc.y, w: rc.w, h: rc.h };
+        });
+        // 调试：透传第一个单元格的原始 JSON（定位真实字段名后移除）
+        if (v3Cells.length) {
+          try { debugCell = JSON.stringify(v3Cells[0]).slice(0, 600); } catch (e) {}
+        }
       }
     } catch (e) { /* 降级 */ }
 
@@ -135,8 +148,16 @@ exports.main = async (event) => {
       }
       const detections = b2.TableDetections || [];
       if (detections.length) {
-        result = normalizeV2(detections[0].Cells || []);
+        const v2Cells = detections[0].Cells || [];
+        result = normalizeV2(v2Cells);
         engineUsed = 'v2';
+        points = v2Cells.filter(c => c.Text && String(c.Text).trim()).map(c => {
+          const rc = deepFindRect(c);
+          return { text: c.Text, x: rc.x, y: rc.y, w: rc.w, h: rc.h };
+        });
+        if (v2Cells.length) {
+          try { debugCell = JSON.stringify(v2Cells[0]).slice(0, 600); } catch (e) {}
+        }
       }
     }
 
@@ -151,24 +172,62 @@ exports.main = async (event) => {
       // 同时返回：坐标重建的行 + 原始带坐标文本块（前端可精确对齐列）
       result = normalizeGeneric(texts);
       engineUsed = 'generic';
-      const rawPoints = texts.map(t => ({
-        text: t.DetectedText || '',
-        x: t.ItemCoord ? t.ItemCoord.X : 0,
-        y: t.ItemCoord ? t.ItemCoord.Y : 0,
-        w: t.ItemCoord ? t.ItemCoord.Width : 0,
-        h: t.ItemCoord ? t.ItemCoord.Height : 0
-      })).filter(p => p.text && p.text.trim());
+      // 注意：GeneralAccurateOCR 返回的坐标字段是 ItemPolygon（X/Y/Width/Height）与 Polygon（四角点），
+      // 并无 ItemCoord（那是 GeneralBasicOCR 的字段）；这里按优先级兼容三者，取不到坐标的块直接丢弃
+      const rawPoints = texts.map(t => {
+        const c = t.ItemPolygon || t.ItemCoord;
+        if (c && typeof c.X === 'number') {
+          return { text: t.DetectedText || '', x: c.X, y: c.Y, w: c.Width || 0, h: c.Height || 0 };
+        }
+        if (t.Polygon && t.Polygon.length >= 4) {
+          const xs = t.Polygon.map(p => p.X), ys = t.Polygon.map(p => p.Y);
+          const x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys);
+          return { text: t.DetectedText || '', x: x0, y: y0, w: Math.max.apply(null, xs) - x0, h: Math.max.apply(null, ys) - y0 };
+        }
+        return null;
+      }).filter(p => p && p.text && p.text.trim());
       return { ok: true, engine: 'generic', rows: result.rows, points: rawPoints };
     }
 
     if (!result || !result.rows.length) {
       return { ok: false, error: '未识别到表格内容，请换一张更清晰、完整包含表头的课表截图' };
     }
-    return { ok: true, engine: engineUsed, rows: result.rows, cells: result.cells || null };
+    return { ok: true, engine: engineUsed, rows: result.rows, points: points, debugCell: debugCell, cells: result.cells || null };
   } catch (e) {
     return { ok: false, error: '云函数异常: ' + e.message };
   }
 };
+
+// 深度递归在任意 JSON 结构中找矩形坐标：
+// 匹配 PointX/PointY 或 X/Y（配 Width/Height 可选），返回首个命中
+function deepFindRect(obj, depth) {
+  depth = depth || 0;
+  if (depth > 8 || !obj || typeof obj !== 'object') return { x: 0, y: 0, w: 0, h: 0 };
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const r = deepFindRect(item, depth + 1);
+      if (r.x || r.y) return r;
+    }
+    return { x: 0, y: 0, w: 0, h: 0 };
+  }
+  // 本层是否像坐标对象
+  const hasPX = typeof obj.PointX === 'number';
+  const hasX = typeof obj.X === 'number';
+  if (hasPX || hasX) {
+    return {
+      x: hasPX ? obj.PointX : obj.X,
+      y: hasPX ? (typeof obj.PointY === 'number' ? obj.PointY : 0) : (typeof obj.Y === 'number' ? obj.Y : 0),
+      w: typeof obj.Width === 'number' ? obj.Width : (typeof obj.CW === 'number' ? obj.CW : 0),
+      h: typeof obj.Height === 'number' ? obj.Height : (typeof obj.CH === 'number' ? obj.CH : 0)
+    };
+  }
+  // 递归子属性
+  for (const k of Object.keys(obj)) {
+    const r = deepFindRect(obj[k], depth + 1);
+    if (r.x || r.y) return r;
+  }
+  return { x: 0, y: 0, w: 0, h: 0 };
+}
 
 // ---------- 结果归一化 ----------
 // V3：TableDetections[0].Cells 带 RowIndex/ColIndex（或 Type/Coord）——按官方返回字段适配
@@ -205,14 +264,21 @@ function normalizeV2(cells) {
   })));
 }
 
-// 通用 OCR：TextDetections:[{DetectedText, ItemCoord:{X,Y,Width,Height}}] 按行聚类、按列分桶
+// 通用 OCR：按 ItemPolygon（优先）/ItemCoord/Polygon 提取坐标，行聚类、列分桶
 function normalizeGeneric(items) {
   if (!items.length) return { rows: [] };
-  const pts = items.map(it => ({
-    text: it.DetectedText || '',
-    x: it.ItemCoord ? (it.ItemCoord.X + (it.ItemCoord.Width || 0) / 2) : 0,
-    y: it.ItemCoord ? (it.ItemCoord.Y + (it.ItemCoord.Height || 0) / 2) : 0
-  }));
+  const pts = items.map(it => {
+    const c = it.ItemPolygon || it.ItemCoord;
+    if (c && typeof c.X === 'number') {
+      return { text: it.DetectedText || '', x: c.X + (c.Width || 0) / 2, y: c.Y + (c.Height || 0) / 2, h: c.Height || 0 };
+    }
+    if (it.Polygon && it.Polygon.length >= 4) {
+      const xs = it.Polygon.map(p => p.X), ys = it.Polygon.map(p => p.Y);
+      const x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys);
+      return { text: it.DetectedText || '', x: x0 + (Math.max.apply(null, xs) - x0) / 2, y: y0 + (Math.max.apply(null, ys) - y0) / 2, h: Math.max.apply(null, ys) - y0 };
+    }
+    return { text: it.DetectedText || '', x: 0, y: 0, h: 0 };
+  }).filter(p => p.text && String(p.text).trim());
   return normalizeByCoord(pts);
 }
 

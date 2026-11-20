@@ -85,6 +85,10 @@
       <text class="r-val" wx:if="{{snapCount}}">{{snapCount}} 份</text>
       <text class="r-arrow">›</text>
     </view>
+    <view class="row" bindtap="clearAll">
+      <text class="r-label danger">一键清空全部数据（课表+成绩）</text>
+      <text class="r-arrow">›</text>
+    </view>
     <view class="row" bindtap="clearCourses">
       <text class="r-label danger">清空课表数据</text>
       <text class="r-arrow">›</text>

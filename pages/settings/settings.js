@@ -350,5 +350,17 @@ Page({
       wx.showToast({ title: '已清空', icon: 'none' });
       that.onShow();
     });
+  },
+  clearAll: function () {
+    var that = this;
+    this.confirmClear('一键清空', '将删除全部课表和成绩数据（设置保留，可用历史快照找回）', function () {
+      // 清空前把最新数据保全进快照
+      store.saveCourses(store.loadCourses());
+      store.saveGrades(store.loadGrades());
+      store.clearCourses();
+      store.clearGrades();
+      wx.showToast({ title: '已全部清空', icon: 'none' });
+      that.onShow();
+    });
   }
 });

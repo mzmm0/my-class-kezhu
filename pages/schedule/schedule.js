@@ -754,6 +754,8 @@ Page({
             }
             if (!pr || !pr.ok) {
               that.setData({ ocrStatus: '' });
+              // 调试输出（定位坐标字段后移除）
+              console.log('===OCR DEBUG=== engine:', r.engine, 'points:', r.points && r.points.slice(0, 3), 'debugCell:', r.debugCell);
               wx.showModal({
                 title: '解析失败',
                 content: (pr && pr.error) || '识别到内容但未能解析出课程，请核对截图是教务课表（需包含星期表头与第X节行头）',
@@ -807,6 +809,57 @@ Page({
     var list = this.data.ocrCourses.slice();
     if (idx >= 0 && idx < list.length) list.splice(idx, 1);
     this.setData({ ocrCourses: list });
+  },
+
+  // ---------- OCR 预览条目编辑 ----------
+  editOcrCourse: function (e) {
+    var idx = +e.currentTarget.dataset.idx;
+    var c = this.data.ocrCourses[idx];
+    if (!c) return;
+    var lenIdx = Math.max(0, (c.periods || 2) - 1);
+    this.setData({
+      ocrEditShow: true,
+      ocrEditIdx: idx,
+      ocrEdit: {
+        name: c.name,
+        teacher: c.teacher,
+        room: c.room,
+        weeksText: c.weeksText,
+        dayIdx: c.day - 1,
+        lenIdx: Math.min(lenIdx, this.data.lenOptions.length - 1)
+      }
+    });
+  },
+  closeOcrEdit: function () { this.setData({ ocrEditShow: false }); },
+  onOcrEditField: function (e) {
+    var k = e.currentTarget.dataset.k;
+    var patch = {};
+    patch['ocrEdit.' + k] = (k === 'dayIdx' || k === 'lenIdx') ? +e.detail.value : e.detail.value;
+    this.setData(patch);
+  },
+  saveOcrEdit: function () {
+    var idx = this.data.ocrEditIdx;
+    var ed = this.data.ocrEdit;
+    var list = this.data.ocrCourses.slice();
+    var c = list[idx];
+    if (!c) return;
+    // 周次文本 -> weeks 对象
+    var wk = parseUtil.parseWeeks(ed.weeksText, this.data.totalWeeks || 20);
+    c.name = ed.name;
+    c.teacher = ed.teacher;
+    c.room = ed.room;
+    c.day = ed.dayIdx + 1;
+    c.dayName = '一二三四五六日'.charAt(ed.dayIdx) ;
+    c.periods = ed.lenIdx + 1;
+    c.endPeriod = c.startPeriod + c.periods - 1;
+    c.weeks = wk;
+    var all = wk.rangeFrom === 1 && wk.rangeTo === (this.data.totalWeeks || 20);
+    var wtxt = all ? '全学期' : (wk.rangeFrom + '-' + wk.rangeTo + '周');
+    if (wk.mode === 'odd') wtxt += '·单周';
+    if (wk.mode === 'even') wtxt += '·双周';
+    c.weeksText = wtxt;
+    list[idx] = c;
+    this.setData({ ocrCourses: list, ocrEditShow: false });
   },
   closeOcrPreview: function () {
     this.setData({ ocrPreviewShow: false });
@@ -914,6 +967,29 @@ Page({
   },
 
   // ---------- 分享 ----------
+  // ---------- 一键全部保存 ----------
+  // 批量重存所有课程：触发快照、云同步、完整重渲染。
+  // 用于"显示状态不对"（变灰失效/错位残留）时的强制刷新兜底
+  saveAllCourses: function () {
+    var courses = store.loadCourses();
+    if (!courses.length) {
+      wx.showToast({ title: '课表为空', icon: 'none' });
+      return;
+    }
+    // 规范化周次数据（确保 weeks 字段完整：mode/rangeFrom/rangeTo）
+    courses.forEach(function (c) {
+      if (!c.weeks || typeof c.weeks !== 'object') {
+        c.weeks = { mode: 'all', rangeFrom: 1, rangeTo: 20 };
+      }
+      if (c.weeks.rangeFrom === undefined) c.weeks.rangeFrom = 1;
+      if (c.weeks.rangeTo === undefined) c.weeks.rangeTo = 20;
+      if (!c.weeks.mode) c.weeks.mode = 'all';
+    });
+    store.saveCourses(courses); // 触发快照 + 云端同步
+    this.refresh();
+    wx.showToast({ title: '已保存全部 ' + courses.length + ' 门课程', icon: 'success' });
+  },
+
   doShare: function () {
     var courses = store.loadCourses();
     if (!courses.length) {

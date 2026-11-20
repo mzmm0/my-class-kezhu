@@ -9,6 +9,7 @@
       <view class="tb-btn" bindtap="exportImage">导出图</view>
       <view class="tb-btn" bindtap="showImport">导入</view>
       <view class="tb-btn" bindtap="doShare">分享</view>
+      <view class="tb-btn" bindtap="saveAllCourses">全部保存</view>
     </view>
   </view>
 
@@ -183,7 +184,7 @@
       <view class="p-title">识别结果（{{ocrCourses.length}} 门）</view>
       <view class="share-hint">请核对每门课，点条目可修改；确认无误后导入。</view>
       <view class="ocr-preview-list">
-        <view class="ocr-item" wx:for="{{ocrCourses}}" wx:key="key">
+        <view class="ocr-item" wx:for="{{ocrCourses}}" wx:key="key" data-idx="{{index}}" bindtap="editOcrCourse">
           <view class="oi-main">
             <text class="oi-name">{{item.name}}</text>
             <text class="oi-sub">周{{item.dayName}} 第{{item.startPeriod}}-{{item.endPeriod}}节 · {{item.weeksText}}</text>
@@ -198,6 +199,41 @@
       <view class="p-btns">
         <view class="btn-ghost" bindtap="reOcr">重新识别</view>
         <view class="btn-primary" bindtap="confirmOcrImport">导入这 {{ocrCourses.length}} 门</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- OCR 预览条目编辑 -->
+  <view class="mask" wx:if="{{ocrEditShow}}" bindtap="closeOcrEdit">
+    <view class="panel" catchtap="noop">
+      <view class="p-title">修改课程</view>
+      <view class="f-row">
+        <text class="f-label">课程名</text>
+        <input class="f-input" value="{{ocrEdit.name}}" data-k="name" bindinput="onOcrEditField" />
+      </view>
+      <view class="f-row">
+        <text class="f-label">老师</text>
+        <input class="f-input" value="{{ocrEdit.teacher}}" data-k="teacher" bindinput="onOcrEditField" />
+      </view>
+      <view class="f-row">
+        <text class="f-label">教室</text>
+        <input class="f-input" value="{{ocrEdit.room}}" data-k="room" bindinput="onOcrEditField" />
+      </view>
+      <view class="f-row3">
+        <picker class="f-pick" mode="selector" range="{{dayOptions}}" value="{{ocrEdit.dayIdx}}" data-k="dayIdx" bindchange="onOcrEditField">
+          <view class="pick-val">{{dayOptions[ocrEdit.dayIdx]}}</view>
+        </picker>
+        <picker class="f-pick" mode="selector" range="{{lenOptions}}" value="{{ocrEdit.lenIdx}}" data-k="lenIdx" bindchange="onOcrEditField">
+          <view class="pick-val">上 {{ocrEdit.lenIdx + 1}} 节</view>
+        </picker>
+      </view>
+      <view class="f-row">
+        <text class="f-label">周次</text>
+        <input class="f-input" value="{{ocrEdit.weeksText}}" data-k="weeksText" placeholder="如 1-16周 或 1-16周(单)" bindinput="onOcrEditField" />
+      </view>
+      <view class="p-btns">
+        <view class="btn-ghost" bindtap="closeOcrEdit">取消</view>
+        <view class="btn-primary" bindtap="saveOcrEdit">保存修改</view>
       </view>
     </view>
   </view>

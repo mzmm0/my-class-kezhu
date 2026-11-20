@@ -47,10 +47,19 @@
       <switch checked="{{remindOn}}" bindchange="toggleRemind" color="#2f6fed" />
     </view>
     <view class="row" bindtap="addRemindQuota">
-      <text class="r-label">续订提醒次数（多点几次）</text>
+      <text class="r-label">续订提醒额度（每天点一次）</text>
       <text class="r-arrow">›</text>
     </view>
-    <view class="hint">微信订阅消息每次授权只能推 1 条：开启后如需每天提醒，隔几天点一次"续订"积累次数。推送为微信"服务通知"（有横幅和声音，效果接近闹钟）。</view>
+    <view class="hint">
+      <text class="hint-b">为什么每天都要「续订」？
+</text>这是微信的硬性规定，所有小程序都一样：你每点一次「允许」，微信只准它给你发 1 条通知（一次性订阅）。
+
+<text class="hint-b">打个比方：像充话费
+</text>点一次「允许」= 充 1 块钱 = 够发 1 天的提醒；想天天收到，就得每天充一次。哪天忘了充，那天早上就没推送（课表本身不受任何影响）。
+
+<text class="hint-b">最省事的充法
+</text>每天打开小程序看课表时，顶部有个黄色的「⏰ 续订提醒」小条，点一下 → 允许，3 秒搞定，明早 7 点准时到。
+    </view>
   </view>
 
   <view class="group">

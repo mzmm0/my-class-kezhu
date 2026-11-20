@@ -38,7 +38,8 @@ Page({
       s: s,
       weeksOptions: weeksOptions,
       periodsOptions: periodsOptions,
-      dateValue: s.semesterStart
+      dateValue: s.semesterStart,
+      remindOn: wx.getStorageSync('kb_remind_on') === true
     });
     this.buildTimeRows(s);
     var snaps = store.loadSnapshots();
@@ -136,12 +137,21 @@ Page({
   noop: function () {},
 
   // ---------- 课前提醒 ----------
+  // 今日本地日期串（与续订记录比对用）
+  todayStr: function () {
+    var d = new Date();
+    return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+  },
+  markTodaySubscribed: function () {
+    wx.setStorageSync('kb_remind_last_sub', this.todayStr());
+  },
   toggleRemind: function (e) {
     var on = !!e.detail.value;
     var that = this;
     if (!on) {
-      // 关闭：仅存云端开关
+      // 关闭：本地+云端同时记状态
       sync.upsertPatch({ remindOn: false, updatedAt: Date.now() });
+      wx.setStorageSync('kb_remind_on', false);
       this.setData({ remindOn: false });
       wx.showToast({ title: '已关闭提醒', icon: 'none' });
       return;
@@ -152,7 +162,7 @@ Page({
     if (!tpl) {
       wx.showModal({
         title: '提醒未配置',
-        content: '订阅消息模板 ID 尚未配置（cloudconf.js 的 REMIND_TEMPLATE_ID），请先在公众平台添加模板并填入。',
+        content: '订阅消息模板 ID 尚未配置，请稍后再试。',
         showCancel: false
       });
       this.setData({ remindOn: false });
@@ -163,8 +173,15 @@ Page({
       success: function (res) {
         if (res[tpl] === 'accept') {
           sync.upsertPatch({ remindOn: true, updatedAt: Date.now() });
+          wx.setStorageSync('kb_remind_on', true);
+          that.markTodaySubscribed(); // 开启时的授权本身就是今天的一条额度
           that.setData({ remindOn: true });
-          wx.showToast({ title: '已开启，明早7点推送', icon: 'none' });
+          wx.showModal({
+            title: '提醒已开启 🎉',
+            content: '记住这条规则：微信规定“每允许一次 = 只能推 1 条”。所以想每天早上都收到，就每天点一次“续订”（课表页顶部也有快捷入口，点一下 3 秒搞定）。今天这 1 条额度已经到手，明早 7 点见！',
+            showCancel: false,
+            confirmText: '知道了'
+          });
         } else {
           that.setData({ remindOn: false });
           wx.showToast({ title: '未授权订阅', icon: 'none' });
@@ -176,8 +193,7 @@ Page({
       }
     });
   },
-  // 每天最多推 1 条（一次性订阅一次授权一条），想每天提醒需要点多次授权；
-  // 引导用户多点几次（每次点击开关下的"续订"按钮）
+  // 续订：再攒一次额度（每点一次允许 = 多一条推送额度）
   addRemindQuota: function () {
     var that = this;
     var conf = require('../../utils/cloudconf');
@@ -190,7 +206,8 @@ Page({
       tmplIds: [tpl],
       success: function (res) {
         if (res[tpl] === 'accept') {
-          wx.showToast({ title: '已续订 1 次', icon: 'none' });
+          that.markTodaySubscribed();
+          wx.showToast({ title: '已续订 1 条额度 ✓', icon: 'none' });
         } else {
           wx.showToast({ title: '未授权', icon: 'none' });
         }

@@ -114,6 +114,8 @@ Page({
     helpShow: false,
     shareShow: false,
     shareCode: '',
+    // 课前提醒续订条
+    remindBar: { show: false, done: false, text: '' },
     // 截图识别
     ocrImagePath: '',
     ocrStatus: '',
@@ -139,6 +141,50 @@ Page({
     this.refresh();
     this.startTodayTimer();
     this.checkLoss();
+    this.updateRemindBar();
+  },
+
+  // ---------- 课前提醒续订条 ----------
+  // 微信规则：一次授权=一条额度；此条让用户每天看课表时顺手续订
+  updateRemindBar: function () {
+    var on = wx.getStorageSync('kb_remind_on') === true;
+    if (!on) {
+      if (this.data.remindBar && this.data.remindBar.show) this.setData({ remindBar: { show: false, done: false, text: '' } });
+      return;
+    }
+    var d = new Date();
+    var today = d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+    var done = wx.getStorageSync('kb_remind_last_sub') === today;
+    this.setData({
+      remindBar: {
+        show: true,
+        done: done,
+        text: done ? '✓ 明早 7 点的课程提醒已就绪' : '⏰ 微信规定每天需授权一次，点击保住明早的课程提醒'
+      }
+    });
+  },
+  remindBarTap: function () {
+    if (this.data.remindBar && this.data.remindBar.done) return; // 今天已续订
+    var conf = require('../../utils/cloudconf');
+    var tpl = conf.REMIND_TEMPLATE_ID;
+    if (!tpl) return;
+    var that = this;
+    wx.requestSubscribeMessage({
+      tmplIds: [tpl],
+      success: function (res) {
+        if (res[tpl] === 'accept') {
+          var d = new Date();
+          wx.setStorageSync('kb_remind_last_sub', d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate());
+          that.updateRemindBar();
+          wx.showToast({ title: '已续订，明早 7 点见', icon: 'none' });
+        } else {
+          wx.showToast({ title: '没续上，明早收不到哦', icon: 'none' });
+        }
+      },
+      fail: function () {
+        wx.showToast({ title: '点太快了，稍后再试', icon: 'none' });
+      }
+    });
   },
 
   // ---------- 数据丢失检测 ----------
@@ -705,6 +751,10 @@ Page({
   // ---------- 截图识别导入 ----------
   toggleOcrSample: function () {
     this.setData({ ocrSampleShow: !this.data.ocrSampleShow });
+  },
+  // 示例图全屏预览（可双指放大看细节）
+  previewOcrSample: function () {
+    wx.previewImage({ urls: ['/assets/ocr-sample.jpg'] });
   },
   chooseOcrImage: function () {
     var that = this;

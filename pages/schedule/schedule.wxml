@@ -13,6 +13,12 @@
     </view>
   </view>
 
+  <!-- 课前提醒续订条：开启提醒的用户每天可见，点一下续订当日额度 -->
+  <view class="remind-bar {{remindBar.done ? 'rb-done' : 'rb-todo'}}" wx:if="{{remindBar.show}}" bindtap="remindBarTap">
+    <view class="rb-text">{{remindBar.text}}</view>
+    <view class="rb-arrow" wx:if="{{!remindBar.done}}">续订 ›</view>
+  </view>
+
   <view class="today-card {{todayBar.mode}}" wx:if="{{todayBar}}">
     <view class="td-dot"></view>
     <view class="td-main">
@@ -150,10 +156,14 @@
       <!-- 截图识别 -->
       <view class="ocr-box" wx:if="{{importTab === 2}}">
         <view class="ocr-tip">拍下或截图教务系统课表，自动识别导入，识别后可逐条确认修改。</view>
-        <view class="ocr-sample" wx:if="{{ocrSampleShow && !ocrImagePath}}" bindtap="toggleOcrSample">
-          <image class="ocr-sample-img" src="/assets/ocr-sample.jpg" mode="aspectFit" />
-          <view class="ocr-sample-cap">↑ 标准示例：顶部一行是星期（周一~周日），最左一列是节数（第一节、第二节…），每一格就是一门课</view>
+        <!-- 标准示例卡：点击图片全屏放大；收起后留一个小入口随时再看 -->
+        <view class="ocr-sample" wx:if="{{ocrSampleShow && !ocrImagePath}}">
+          <view class="ocr-sample-title">📋 标准示例（点图片可放大细看）</view>
+          <image class="ocr-sample-img" src="/assets/ocr-sample.jpg" mode="aspectFit" bindtap="previewOcrSample" />
+          <view class="ocr-sample-cap">顶部一行是<b>星期</b>（周一~周日），最左一列是<b>节数</b>（第一节、第二节…），每一格就是一门课</view>
+          <view class="ocr-sample-hide" catchtap="toggleOcrSample">收起示例</view>
         </view>
+        <view class="ocr-sample-mini" wx:if="{{!ocrSampleShow && !ocrImagePath}}" bindtap="toggleOcrSample">📋 展开拍图示例（不知道怎么拍就看这里）</view>
         <view class="ocr-img-area" bindtap="chooseOcrImage">
           <image wx:if="{{ocrImagePath}}" class="ocr-img" src="{{ocrImagePath}}" mode="aspectFit" />
           <view wx:else class="ocr-placeholder">＋ 选择课表截图</view>

@@ -149,7 +149,11 @@
       ></textarea>
       <!-- 截图识别 -->
       <view class="ocr-box" wx:if="{{importTab === 2}}">
-        <view class="ocr-tip">选一张教务系统课表截图（表头含星期、行头为第X节），识别后可逐条确认修改。</view>
+        <view class="ocr-tip">拍下或截图教务系统课表，自动识别导入，识别后可逐条确认修改。</view>
+        <view class="ocr-sample" wx:if="{{ocrSampleShow && !ocrImagePath}}" bindtap="toggleOcrSample">
+          <image class="ocr-sample-img" src="/assets/ocr-sample.jpg" mode="aspectFit" />
+          <view class="ocr-sample-cap">↑ 标准示例：顶部一行是星期（周一~周日），最左一列是节数（第一节、第二节…），每一格就是一门课</view>
+        </view>
         <view class="ocr-img-area" bindtap="chooseOcrImage">
           <image wx:if="{{ocrImagePath}}" class="ocr-img" src="{{ocrImagePath}}" mode="aspectFit" />
           <view wx:else class="ocr-placeholder">＋ 选择课表截图</view>

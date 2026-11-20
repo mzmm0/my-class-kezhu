@@ -167,9 +167,10 @@
 .course-block {
   position: absolute;
   box-sizing: border-box;
-  border-radius: 10rpx;
+  /* 直角填充：与格子边界完全重合（格子为直角，圆角会四角露白） */
+  border-radius: 0;
   color: #fff;
-  padding: 8rpx;
+  padding: 8rpx 10rpx;
   overflow: hidden;
 }
 .cb-name {
@@ -190,11 +191,12 @@
   margin-bottom: 16rpx;
 }
 
-/* 非本周课程：置灰但保留位置 */
+/* 非本周课程：置灰但保留位置；同样贴满格子，虚线内描边 */
 .course-block.cb-dim {
   background: #eef0f4;
   color: #a3a9b4;
   border: 1rpx dashed #cdd2db;
+  box-sizing: border-box;
 }
 .cb-dim .cb-name {
   font-weight: 500;
@@ -227,6 +229,25 @@
   color: #888;
   line-height: 1.6;
   margin-bottom: 16rpx;
+}
+/* 标准示例：教务课表长什么样（表头=星期、行头=节数） */
+.ocr-sample {
+  margin-bottom: 16rpx;
+  border: 1rpx solid #e3e6eb;
+  border-radius: 12rpx;
+  padding: 12rpx;
+  background: #fafbfd;
+}
+.ocr-sample-img {
+  width: 100%;
+  height: 320rpx;
+  display: block;
+}
+.ocr-sample-cap {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #8a8f99;
+  line-height: 1.5;
 }
 .ocr-img-area {
   height: 300rpx;

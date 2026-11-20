@@ -117,6 +117,7 @@ Page({
     // 截图识别
     ocrImagePath: '',
     ocrStatus: '',
+    ocrSampleShow: true,
     ocrPreviewShow: false,
     ocrCourses: [],
     ocrWarnings: [],
@@ -303,10 +304,12 @@ Page({
       if (c.startPeriod > pc) return;
       var visible = parseUtil.weekVisible(c.weeks, week, settings.totalWeeks);
       var periods = Math.min(c.periods || 1, pc - c.startPeriod + 1);
-      var geo = 'left:' + (TIME_W + (c.day - 1) * DAY_W + 3) + 'rpx;' +
-                'top:' + ((c.startPeriod - 1) * CELL_H + 3) + 'rpx;' +
-                'width:' + (DAY_W - 6) + 'rpx;' +
-                'height:' + (periods * CELL_H - 6) + 'rpx;';
+      // 精确贴合格子：色块与格子同宽（盖住格间 1rpx 边线），高度只扣掉格子自身的
+      // 上下边线厚度，四边与格子边界完全重合，无露白、无压线
+      var geo = 'left:' + (TIME_W + (c.day - 1) * DAY_W) + 'rpx;' +
+                'top:' + ((c.startPeriod - 1) * CELL_H) + 'rpx;' +
+                'width:' + DAY_W + 'rpx;' +
+                'height:' + (periods * CELL_H - 1) + 'rpx;';
       var block = {
         id: c.id,
         style: geo + 'background:' + colorFor(c.name) + ';',
@@ -457,18 +460,18 @@ Page({
       if (!c.day || c.day < 1 || c.day > 7) return;
       if (!c.startPeriod || c.startPeriod > pc) return;
       var periods = Math.min(c.periods || 1, pc - c.startPeriod + 1);
-      var bx = TW + (c.day - 1) * DW + 3 * K;
-      var by = y0 + (c.startPeriod - 1) * CH + 3 * K;
-      var bw = DW - 6 * K;
-      var bh = periods * CH - 6 * K;
+      // 与页面网格一致：精确贴合格子（同宽、高只扣格子自身边线），无露白无压线
+      var bx = TW + (c.day - 1) * DW;
+      var by = y0 + (c.startPeriod - 1) * CH;
+      var bw = DW;
+      var bh = periods * CH - K; // 扣掉格子底边线厚度，避免盖到下一格
       var pad = 8 * K;
-      var innerW = bw - pad * 2;
+      var innerW = bw - pad * 2 - 2 * K;
       var lh = 24 * K;      // 课程名行高
       var slh = 21 * K;     // 教室/老师行高
 
       ctx.setFillStyle(colorFor(c.name));
-      roundRect(ctx, bx, by, bw, bh, 8 * K);
-      ctx.fill();
+      ctx.fillRect(bx, by, bw, bh);
 
       // 按块高决定能塞几行课程名（1 节的短块也能放下 3 行）
       var avail = bh - pad * 2;
@@ -700,6 +703,9 @@ Page({
   },
 
   // ---------- 截图识别导入 ----------
+  toggleOcrSample: function () {
+    this.setData({ ocrSampleShow: !this.data.ocrSampleShow });
+  },
   chooseOcrImage: function () {
     var that = this;
     wx.chooseImage({

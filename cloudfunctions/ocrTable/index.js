@@ -127,10 +127,35 @@ exports.main = async (event) => {
         const v3Cells = det.Cells || det.MergedCells || [];
         result = normalizeV3(b3);
         engineUsed = 'v3';
-        // 深度递归提取坐标（兼容任意字段命名）
+        // 坐标提取：V3 Cell 自带 Polygon（四角点矩形），取 bounding box；
+        // 同时透传行号语义（RowTl/RowBr）——行头 cell 建立 RowTl->大节号 映射，
+        // 课程 cell 附带 row（所在大节）/rowSpan（跨大节数），前端优先用行号归位
+        const rowToPeriod = {};
+        v3Cells.forEach(c => {
+          if (c.RowTl === undefined) return;
+          const t = String(c.Text || '').replace(/\s/g, '');
+          const re = /第([0-9一二三四五六七八九十]+)节/g;
+          const ks = [];
+          let mm;
+          while ((mm = re.exec(t))) {
+            const nn = cnToIntTencent(mm[1]);
+            if (nn >= 1 && nn <= 12) ks.push(nn);
+          }
+          if (!ks.length) return;
+          const rowsSpan = (c.RowBr !== undefined ? c.RowBr : c.RowTl + 1) - c.RowTl;
+          ks.forEach((nn, i) => {
+            const r = c.RowTl + Math.round(rowsSpan * i / ks.length);
+            if (!rowToPeriod[r]) rowToPeriod[r] = nn;
+          });
+        });
         points = v3Cells.filter(c => c.Text && String(c.Text).trim()).map(c => {
-          const rc = deepFindRect(c);
-          return { text: c.Text, x: rc.x, y: rc.y, w: rc.w, h: rc.h };
+          const rc = rectFromPolygon(c.Polygon) || deepFindRect(c);
+          const p = { text: c.Text, x: rc.x, y: rc.y, w: rc.w, h: rc.h };
+          if (c.RowTl !== undefined) {
+            if (rowToPeriod[c.RowTl]) p.row = rowToPeriod[c.RowTl];
+            if (c.RowBr !== undefined && c.RowBr - c.RowTl > 1) p.rowSpan = c.RowBr - c.RowTl;
+          }
+          return p;
         });
         // 调试：透传第一个单元格的原始 JSON（定位真实字段名后移除）
         if (v3Cells.length) {
@@ -152,7 +177,7 @@ exports.main = async (event) => {
         result = normalizeV2(v2Cells);
         engineUsed = 'v2';
         points = v2Cells.filter(c => c.Text && String(c.Text).trim()).map(c => {
-          const rc = deepFindRect(c);
+          const rc = rectFromPolygon(c.Polygon) || deepFindRect(c);
           return { text: c.Text, x: rc.x, y: rc.y, w: rc.w, h: rc.h };
         });
         if (v2Cells.length) {
@@ -197,6 +222,27 @@ exports.main = async (event) => {
     return { ok: false, error: '云函数异常: ' + e.message };
   }
 };
+
+// 四角点 Polygon（[{X,Y}...至少3个不共线顶点]）-> 矩形 bounding box
+// V3/V2 表格引擎的 Cell 坐标即此形态；取不到返回 null 走 deepFindRect 兜底
+function rectFromPolygon(poly) {
+  if (!poly || !poly.length || typeof poly[0].X !== 'number') return null;
+  const xs = poly.map(p => p.X), ys = poly.map(p => p.Y);
+  const x0 = Math.min(...xs), y0 = Math.min(...ys);
+  return { x: x0, y: y0, w: Math.max(...xs) - x0, h: Math.max(...ys) - y0 };
+}
+
+// 中文数字 -> 阿拉伯数字（行头"第X节"编号用）
+const CN_NUM_T = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 };
+function cnToIntTencent(s) {
+  s = String(s || '').trim();
+  if (/^\d+$/.test(s)) return +s;
+  if (s === '十') return 10;
+  if (s.length === 2 && s[0] === '十') return 10 + (CN_NUM_T[s[1]] || 0);
+  if (s.length === 2 && s[1] === '十') return (CN_NUM_T[s[0]] || 0) * 10;
+  if (s.length === 3 && s[1] === '十') return (CN_NUM_T[s[0]] || 0) * 10 + (CN_NUM_T[s[2]] || 0);
+  return CN_NUM_T[s] || 0;
+}
 
 // 深度递归在任意 JSON 结构中找矩形坐标：
 // 匹配 PointX/PointY 或 X/Y（配 Width/Height 可选），返回首个命中

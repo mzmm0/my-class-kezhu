@@ -439,16 +439,39 @@ function parseByPoints(points, totalWeeks) {
     var t = String(p.text || '').trim();
     var cx = p.x + (p.w || 0) / 2; // 中心点
     var cy = p.y + (p.h || 0) / 2;
-    return { text: t, x: p.x, y: p.y, w: p.w || 0, h: p.h || 0, cx: cx, cy: cy };
+    // row/rowSpan：表格引擎（V3）透传的行号语义（所在大节/跨大节数），归位时优先使用
+    var q = { text: t, x: p.x, y: p.y, w: p.w || 0, h: p.h || 0, cx: cx, cy: cy };
+    if (p.row !== undefined) q.row = p.row;
+    if (p.rowSpan !== undefined) q.rowSpan = p.rowSpan;
+    return q;
   }).filter(function (p) { return p.text; });
 
   // 2) 行头块（第X节）——先于表头识别（表头 y 判定要用行头位置）
+  //    表格引擎（V3）会把相邻行头合并成一个跨行单元格，文本如"第三节 第四节"：
+  //    按出现顺序把块的 y 高度均分，拆出每个节的虚拟行头，否则行带边界缺一档，
+  //    第4大节的课会被错划到相邻大节
   var rowHeads = {};
   pts.forEach(function (p) {
-    var m = p.text.replace(/\s/g, '').match(/^第([0-9一二三四五六七八九十]+)节/);
-    if (m) {
+    var t = p.text.replace(/\s/g, '');
+    var re = /第([0-9一二三四五六七八九十]+)节/g;
+    var found = [], m;
+    while ((m = re.exec(t))) {
       var n = cnToInt(m[1]);
-      if (n >= 1 && n <= 12 && !rowHeads[n]) rowHeads[n] = p;
+      if (n >= 1 && n <= 12) found.push(n);
+    }
+    if (!found.length) return;
+    if (found.length === 1) {
+      if (!rowHeads[found[0]]) rowHeads[found[0]] = p;
+    } else {
+      var y0 = p.y, h0 = p.h || 0;
+      found.forEach(function (n2, i) {
+        if (rowHeads[n2]) return;
+        rowHeads[n2] = {
+          text: '第' + '一二三四五六七八九十'.charAt(n2 - 1) + '节',
+          x: p.x, y: y0 + h0 * i / found.length, w: p.w || 0, h: h0 / found.length,
+          cy: y0 + h0 * (i + 0.5) / found.length
+        };
+      });
     }
   });
   var periodNos = Object.keys(rowHeads).map(Number).sort(function (a, b) { return rowHeads[a].cy - rowHeads[b].cy; });
@@ -530,6 +553,12 @@ function parseByPoints(points, totalWeeks) {
   // 任何能被识别为星期表头的文本（含乱码变体）都跳过，防止其被当课程
   pts.forEach(function (p) { if (dayFromText(p.text)) headerTexts[p.text] = 1; });
   Object.keys(rowHeads).forEach(function (k) { headerTexts[rowHeads[k].text] = 1; });
+  // 纯节头块也跳过：表格引擎会把相邻行头合并成一个跨行单元格（文本如"第三节 第四节"），
+  // 去掉全部"第X节"字样后无残字的文本不当作课程
+  pts.forEach(function (p) {
+    var stripped = String(p.text || '').replace(/\s/g, '').replace(/第[0-9一二三四五六七八九十]+节/g, '');
+    if (!stripped) headerTexts[p.text] = 1;
+  });
   var skipRe = /^课表格式说明|午间课|晚间课|节次|周次/;
   // 先按列收集（x 归列），列内再按 y 聚类成"格"（同格多行文字 y 间距小）
   var colCells = {}; // day -> [块]
@@ -595,24 +624,47 @@ function parseByPoints(points, totalWeeks) {
       }
     });
     if (cur) groups.push(cur);
-    // 每组归行：主带 = 组内块带序的众数（平局取靠前的带，即首块所在带）
+    // 每组归行：优先用云函数透传的行号（V3 表格引擎的 RowTl，明确无歧义）；
+    // 无行号时回退到主带 = 组内块带序的众数（平局取靠前的带，即首块所在带）
     groups.forEach(function (grp) {
-      var counts = {}, order = [];
+      var rowVotes = {}, rowOrder = [];
       grp.blocks.forEach(function (p) {
-        var b3 = bandOf(p.cy);
-        if (counts[b3] === undefined) { counts[b3] = 0; order.push(b3); }
-        counts[b3]++;
+        if (p.row === undefined) return;
+        var rv = p.row;
+        if (rowVotes[rv] === undefined) { rowVotes[rv] = 0; rowOrder.push(rv); }
+        rowVotes[rv]++;
       });
-      var band = order[0], maxN = -1;
-      order.forEach(function (b4) { if (counts[b4] > maxN) { maxN = counts[b4]; band = b4; } });
-      if (band >= periodNos.length) band = periodNos.length - 1;
-      var period = periodNos[band];
+      var period = 0;
+      if (rowOrder.length) {
+        var bestRow = rowOrder[0], bestN = -1;
+        rowOrder.forEach(function (rv) { if (rowVotes[rv] > bestN) { bestN = rowVotes[rv]; bestRow = rv; } });
+        period = bestRow;
+      } else {
+        var counts = {}, order = [];
+        grp.blocks.forEach(function (p) {
+          var b3 = bandOf(p.cy);
+          if (counts[b3] === undefined) { counts[b3] = 0; order.push(b3); }
+          counts[b3]++;
+        });
+        var band = order[0], maxN = -1;
+        order.forEach(function (b4) { if (counts[b4] > maxN) { maxN = counts[b4]; band = b4; } });
+        if (band >= periodNos.length) band = periodNos.length - 1;
+        period = periodNos[band];
+      }
       if (!period) return;
-      // 跨大节节数：组底越过带边界 + 余量（文字底边压线不算，防误判）
+      // 跨大节节数：优先用云函数透传的 rowSpan（V3 RowBr-RowTl）；
+      // 否则看组底越过带边界 + 余量（文字底边压线不算，防误判）
       var span = 1;
-      for (var s2 = band; s2 < bandEdges.length; s2++) {
-        if (grp.maxY > bandEdges[s2] + gapAvg * 0.1) span++;
-        else break;
+      var rowSpanMax = 0;
+      grp.blocks.forEach(function (p) { if (p.rowSpan && p.rowSpan > rowSpanMax) rowSpanMax = p.rowSpan; });
+      if (rowSpanMax) {
+        span = rowSpanMax;
+      } else {
+        var band0 = bandOf(grp.blocks[0].cy);
+        for (var s2 = band0; s2 < bandEdges.length; s2++) {
+          if (grp.maxY > bandEdges[s2] + gapAvg * 0.1) span++;
+          else break;
+        }
       }
       var text = grp.blocks.map(function (p) { return p.text; }).join(' ');
       parseCellText(text).forEach(function (it) {

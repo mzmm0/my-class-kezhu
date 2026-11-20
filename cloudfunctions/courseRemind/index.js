@@ -7,6 +7,14 @@ const db = cloud.database();
 // 直接写死，不读环境变量——避免控制台里配错的环境变量覆盖正确值
 const TEMPLATE_ID = 'c0cTNkSZxz5BG1kFdux4EfAF-7whJZAWYDF02aToV9M';
 
+// 每个节次（小节）的上课开始时刻（与前端 utils/presets.js 保持一致）
+var PERIOD_TIMES = [
+  '08:00', '08:45', '10:05', '10:50',
+  '14:00', '14:45', '16:05', '16:50',
+  '19:00', '19:45', '20:05', '20:50',
+  '21:30', '22:15', '23:00'
+];
+
 // ---------- 工具 ----------
 function pad(n) { return (n < 10 ? '0' : '') + n; }
 
@@ -62,6 +70,9 @@ exports.main = async (event) => {
       var summary = lines.join('\n');
       if (courses.length > 5) summary += '\n...共' + courses.length + '门';
       var first = courses[0];
+      // 首节上课时刻（settings.periodTimes 可覆盖默认作息）
+      var ptArr = (settings.periodTimes && settings.periodTimes.length) ? settings.periodTimes : PERIOD_TIMES;
+      var startTime = ptArr[(first.startPeriod || 1) - 1] || '08:00';
 
       // 2) 发送订阅消息（openid 用记录里的 _openid）
       // 模板「日程提醒」字段编号（以"我的模板"详情页为准）：
@@ -74,7 +85,7 @@ exports.main = async (event) => {
         miniprogramState: 'formal', // 已发布正式版；体验版测试时临时改 trial
         data: {
           thing5: { value: ('今日第' + (first.startPeriod || 1) + '节 ' + (first.name || '')).slice(0, 20) },
-          time57: { value: (now.getFullYear() + '年' + (now.getMonth() + 1) + '月' + now.getDate() + '日 ' + (first.startTime || '08:00')).slice(0, 32) },
+          time57: { value: now.getFullYear() + '年' + (now.getMonth() + 1) + '月' + now.getDate() + '日 ' + startTime },
           thing10: { value: (first.room || '见课表').slice(0, 20) },
           thing11: { value: ('今日共' + courses.length + '门课，点击查看').slice(0, 20) }
         }

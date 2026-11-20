@@ -74,7 +74,7 @@ exports.main = async (event) => {
         miniprogramState: 'formal', // 已发布正式版；体验版测试时临时改 trial
         data: {
           thing5: { value: ('今日第' + (first.startPeriod || 1) + '节 ' + (first.name || '')).slice(0, 20) },
-          time57: { value: (first.startTime || '今日 08:00').slice(0, 20) },
+          time57: { value: (now.getFullYear() + '年' + (now.getMonth() + 1) + '月' + now.getDate() + '日 ' + (first.startTime || '08:00')).slice(0, 32) },
           thing10: { value: (first.room || '见课表').slice(0, 20) },
           thing11: { value: ('今日共' + courses.length + '门课，点击查看').slice(0, 20) }
         }

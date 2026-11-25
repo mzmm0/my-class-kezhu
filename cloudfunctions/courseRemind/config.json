@@ -6,12 +6,12 @@
   },
   "triggers": [
     {
-      "name": "morningRemind",
+      "name": "morning-remind",
       "type": "timer",
       "config": "0 30 7 * * * *"
     },
     {
-      "name": "afternoonRemind",
+      "name": "afternoon-remind",
       "type": "timer",
       "config": "0 30 13 * * * *"
     }

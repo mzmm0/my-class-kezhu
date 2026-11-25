@@ -6,14 +6,9 @@
   },
   "triggers": [
     {
-      "name": "morning-remind",
+      "name": "slot-remind",
       "type": "timer",
-      "config": "0 30 7 * * * *"
-    },
-    {
-      "name": "afternoon-remind",
-      "type": "timer",
-      "config": "0 30 13 * * * *"
+      "config": "0 0/30 * * * * *"
     }
   ]
 }

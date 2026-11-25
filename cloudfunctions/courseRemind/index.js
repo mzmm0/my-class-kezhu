@@ -42,7 +42,8 @@ function courseVisible(c, week) {
 }
 
 // ---------- 主入口 ----------
-// 每天两次：上午 7:30 推上午的课，下午 13:30 推下午的课；该时段没课不推
+// 触发器每 30 分钟跑一次；函数内部判断：北京时间 7:30~8:00 推上午档，13:30~14:00 推下午档，
+// 其余时间直接退出；每天每档只推一次（云端 lastPushDay 记录防重复）
 // 手动测试：{ test: true, date: '2026-11-24', time: '13:30' }（time 不传默认 07:30）
 exports.main = async (event) => {
   var now;
@@ -54,16 +55,30 @@ exports.main = async (event) => {
   }
   var day = dayNo(now);
   var hour = now.getHours();
-  var isMorning = hour < 12; // 7:30 触发=上午档，13:30 触发=下午档
+  var minute = now.getMinutes();
+  var isMorning;
+  if (event && event.date) {
+    isMorning = hour < 12; // 手动测试：按传入时间归档
+  } else {
+    // 定时触发：只在 7:30~8:00（上午档）与 13:30~14:00（下午档）执行，其余静默退出
+    var inWindow = (hour === 7 && minute >= 30) || (hour === 13 && minute >= 30);
+    if (!inWindow) return { ok: true, idle: true, msg: '非推送时段，跳过' };
+    isMorning = hour < 12;
+  }
 
   // 1) 读所有开了提醒的用户档案（kb_user_data 里 remindOn 字段）
   var res = await db.collection('kb_user_data').where({ remindOn: true }).get();
   var users = res.data || [];
   var sent = 0, skipped = 0, errors = [];
 
+  // 0) 防重复：每用户每天每档只推一次（云端 lastPushDay: { am: '2026-11-25', pm: '2026-11-25' }）
+  var slotKey = isMorning ? 'am' : 'pm';
+  var todayStr = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
   for (var i = 0; i < users.length; i++) {
     var u = users[i];
     try {
+      var lp = u.lastPushDay || {};
+      if (lp[slotKey] === todayStr) { skipped++; continue; }
       var settings = u.settings || {};
       var week = weekNo(settings.semesterStart, now);
       var ptArr = (settings.periodTimes && settings.periodTimes.length) ? settings.periodTimes : PERIOD_TIMES;
@@ -113,19 +128,27 @@ exports.main = async (event) => {
       });
       if (sendRes) {
         sent++;
-        // 扣减剩余额度（微信不提供查询接口，靠自己记账）
-        if (typeof u.remindQuota === 'number') {
-          try {
-            await db.collection('kb_user_data').doc(u._id).update({
-              data: { remindQuota: Math.max(0, u.remindQuota - 1) }
-            });
-          } catch (e2) { /* 扣减失败不影响已发出的消息 */ }
-        }
+        // 标记今天该档已推（防 30 分钟触发器重复推送）+ 扣减额度
+        var patch = {};
+        patch['lastPushDay.' + slotKey] = todayStr;
+        if (typeof u.remindQuota === 'number') patch.remindQuota = Math.max(0, u.remindQuota - 1);
+        try {
+          await db.collection('kb_user_data').doc(u._id).update({ data: patch });
+        } catch (e2) { /* 标记失败不影响已发出的消息 */ }
       }
     } catch (e) {
       errors.push(e.message || String(e));
     }
   }
 
-  return { ok: true, date: now.toISOString().slice(0, 10), day: day, users: users.length, sent: sent, skipped: skipped, errors: errors.slice(0, 5) };
+  return {
+    ok: true,
+    date: now.toISOString().slice(0, 10),
+    day: day,
+    slot: slotKey,
+    users: users.length,
+    sent: sent,
+    skipped: skipped,
+    errors: errors.slice(0, 5)
+  };
 };
